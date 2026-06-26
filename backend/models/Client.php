@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__ . '/BaseModel.php';
 
 /**
  * Modèle pour les clients.
@@ -7,15 +8,19 @@ declare(strict_types=1);
 class Client extends BaseModel
 {
     protected ?int $id = null;
+    protected ?int $userId = null;
     protected string $companyName = '';
+    protected string $legalForm = '';
     protected string $contactName = '';
     protected string $email = '';
     protected string $phone = '';
     protected string $address = '';
-    protected string $city = '';
-    protected string $postalCode = '';
-    protected string $country = '';
-    protected string $status = 'active';
+    protected string $ninea = '';
+    protected string $rccm = '';
+    protected string $taxRegime = '';
+    protected ?string $accountingYearStart = null;
+    protected ?string $accountingYearEnd = null;
+    protected string $status = 'ACTIF';
     protected ?string $createdAt = null;
     protected ?string $updatedAt = null;
 
@@ -28,15 +33,19 @@ class Client extends BaseModel
     public function hydrate(array $data): void
     {
         $this->id = isset($data['id']) ? (int) $data['id'] : null;
+        $this->userId = isset($data['user_id']) ? (int) $data['user_id'] : (isset($data['userId']) ? (int) $data['userId'] : null);
         $this->companyName = $data['company_name'] ?? $data['companyName'] ?? '';
+        $this->legalForm = $data['legal_form'] ?? $data['legalForm'] ?? '';
         $this->contactName = $data['contact_name'] ?? $data['contactName'] ?? '';
         $this->email = $data['email'] ?? '';
         $this->phone = $data['phone'] ?? '';
         $this->address = $data['address'] ?? '';
-        $this->city = $data['city'] ?? '';
-        $this->postalCode = $data['postal_code'] ?? $data['postalCode'] ?? '';
-        $this->country = $data['country'] ?? '';
-        $this->status = $data['status'] ?? 'active';
+        $this->ninea = $data['ninea'] ?? '';
+        $this->rccm = $data['rccm'] ?? '';
+        $this->taxRegime = $data['tax_regime'] ?? $data['taxRegime'] ?? '';
+        $this->accountingYearStart = $data['accounting_year_start'] ?? $data['accountingYearStart'] ?? null;
+        $this->accountingYearEnd = $data['accounting_year_end'] ?? $data['accountingYearEnd'] ?? null;
+        $this->status = $data['status'] ?? 'ACTIF';
         $this->createdAt = $data['created_at'] ?? $data['createdAt'] ?? null;
         $this->updatedAt = $data['updated_at'] ?? $data['updatedAt'] ?? null;
     }
@@ -45,14 +54,18 @@ class Client extends BaseModel
     {
         return [
             'id' => $this->id,
+            'user_id' => $this->userId,
             'company_name' => $this->companyName,
+            'legal_form' => $this->legalForm,
             'contact_name' => $this->contactName,
             'email' => $this->email,
             'phone' => $this->phone,
             'address' => $this->address,
-            'city' => $this->city,
-            'postal_code' => $this->postalCode,
-            'country' => $this->country,
+            'ninea' => $this->ninea,
+            'rccm' => $this->rccm,
+            'tax_regime' => $this->taxRegime,
+            'accounting_year_start' => $this->accountingYearStart,
+            'accounting_year_end' => $this->accountingYearEnd,
             'status' => $this->status,
             'created_at' => $this->createdAt,
             'updated_at' => $this->updatedAt,
@@ -66,30 +79,81 @@ class Client extends BaseModel
 
     public function findAll(array $filters = [], int $limit = 20, int $offset = 0): array
     {
+        // Use a flexible search supporting partial matches for company/contact/email/ninea/rccm
         $params = [];
-        $filterClause = $this->buildFilterClause($filters, $params);
+        $where = [];
+
+        if (!empty($filters['q'])) {
+            $q = '%' . $filters['q'] . '%';
+            $where[] = '(company_name LIKE :q OR contact_name LIKE :q OR email LIKE :q OR ninea LIKE :q OR rccm LIKE :q)';
+            $params['q'] = $q;
+        }
+
+        if (!empty($filters['status'])) {
+            $where[] = '`status` = :status';
+            $params['status'] = $filters['status'];
+        }
+
+        if (!empty($filters['tax_regime'])) {
+            $where[] = '`tax_regime` = :tax_regime';
+            $params['tax_regime'] = $filters['tax_regime'];
+        }
+
+        $whereClause = $where ? ' WHERE ' . implode(' AND ', $where) : '';
 
         $params['limit'] = $limit;
         $params['offset'] = $offset;
 
         return $this->fetchAll(
-            "SELECT * FROM `clients`{$filterClause} ORDER BY `id` ASC LIMIT :limit OFFSET :offset",
+            "SELECT * FROM `clients`{$whereClause} ORDER BY `id` ASC LIMIT :limit OFFSET :offset",
             $params
         );
+    }
+
+    public function count(array $filters = []): int
+    {
+        $params = [];
+        $where = [];
+
+        if (!empty($filters['q'])) {
+            $q = '%' . $filters['q'] . '%';
+            $where[] = '(company_name LIKE :q OR contact_name LIKE :q OR email LIKE :q OR ninea LIKE :q OR rccm LIKE :q)';
+            $params['q'] = $q;
+        }
+
+        if (!empty($filters['status'])) {
+            $where[] = '`status` = :status';
+            $params['status'] = $filters['status'];
+        }
+
+        if (!empty($filters['tax_regime'])) {
+            $where[] = '`tax_regime` = :tax_regime';
+            $params['tax_regime'] = $filters['tax_regime'];
+        }
+
+        $whereClause = $where ? ' WHERE ' . implode(' AND ', $where) : '';
+
+        $result = $this->fetchOne("SELECT COUNT(*) AS c FROM `clients`{$whereClause}", $params);
+
+        return $result === null ? 0 : (int) $result['c'];
     }
 
     public function create(array $data): int
     {
         $insertData = [
+            'user_id' => isset($data['user_id']) ? $data['user_id'] : null,
             'company_name' => $data['company_name'] ?? $data['companyName'] ?? '',
+            'legal_form' => $data['legal_form'] ?? $data['legalForm'] ?? '',
             'contact_name' => $data['contact_name'] ?? $data['contactName'] ?? '',
             'email' => $data['email'] ?? '',
             'phone' => $data['phone'] ?? '',
             'address' => $data['address'] ?? '',
-            'city' => $data['city'] ?? '',
-            'postal_code' => $data['postal_code'] ?? $data['postalCode'] ?? '',
-            'country' => $data['country'] ?? '',
-            'status' => $data['status'] ?? 'active',
+            'ninea' => $data['ninea'] ?? '',
+            'rccm' => $data['rccm'] ?? '',
+            'tax_regime' => $data['tax_regime'] ?? $data['taxRegime'] ?? '',
+            'accounting_year_start' => $data['accounting_year_start'] ?? $data['accountingYearStart'] ?? null,
+            'accounting_year_end' => $data['accounting_year_end'] ?? $data['accountingYearEnd'] ?? null,
+            'status' => $data['status'] ?? 'ACTIF',
         ];
 
         return $this->insert('clients', $insertData);
@@ -119,16 +183,28 @@ class Client extends BaseModel
             $updateData['address'] = $data['address'];
         }
 
-        if (isset($data['city'])) {
-            $updateData['city'] = $data['city'];
+        if (isset($data['legal_form'])) {
+            $updateData['legal_form'] = $data['legal_form'];
         }
 
-        if (isset($data['postal_code']) || isset($data['postalCode'])) {
-            $updateData['postal_code'] = $data['postal_code'] ?? $data['postalCode'];
+        if (isset($data['ninea'])) {
+            $updateData['ninea'] = $data['ninea'];
         }
 
-        if (isset($data['country'])) {
-            $updateData['country'] = $data['country'];
+        if (isset($data['rccm'])) {
+            $updateData['rccm'] = $data['rccm'];
+        }
+
+        if (isset($data['tax_regime'])) {
+            $updateData['tax_regime'] = $data['tax_regime'];
+        }
+
+        if (isset($data['accounting_year_start']) || isset($data['accountingYearStart'])) {
+            $updateData['accounting_year_start'] = $data['accounting_year_start'] ?? $data['accountingYearStart'];
+        }
+
+        if (isset($data['accounting_year_end']) || isset($data['accountingYearEnd'])) {
+            $updateData['accounting_year_end'] = $data['accounting_year_end'] ?? $data['accountingYearEnd'];
         }
 
         if (isset($data['status'])) {
