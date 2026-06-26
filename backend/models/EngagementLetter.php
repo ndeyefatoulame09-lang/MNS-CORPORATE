@@ -2,17 +2,19 @@
 declare(strict_types=1);
 
 /**
- * Modèle pour les documents.
+ * Modèle pour les lettres de mission.
  */
-class Document extends BaseModel
+class EngagementLetter extends BaseModel
 {
+    public const STATUS_PENDING = 'pending';
+    public const STATUS_SIGNED = 'signed';
+
     protected ?int $id = null;
     protected ?int $clientId = null;
     protected ?int $missionId = null;
-    protected string $title = '';
-    protected string $filePath = '';
-    protected string $fileType = '';
-    protected ?string $uploadedAt = null;
+    protected string $status = self::STATUS_PENDING;
+    protected string $documentPath = '';
+    protected ?string $signedAt = null;
     protected ?string $createdAt = null;
     protected ?string $updatedAt = null;
 
@@ -27,10 +29,9 @@ class Document extends BaseModel
         $this->id = isset($data['id']) ? (int) $data['id'] : null;
         $this->clientId = isset($data['client_id']) ? (int) $data['client_id'] : (isset($data['clientId']) ? (int) $data['clientId'] : null);
         $this->missionId = isset($data['mission_id']) ? (int) $data['mission_id'] : (isset($data['missionId']) ? (int) $data['missionId'] : null);
-        $this->title = $data['title'] ?? '';
-        $this->filePath = $data['file_path'] ?? $data['filePath'] ?? '';
-        $this->fileType = $data['file_type'] ?? $data['fileType'] ?? '';
-        $this->uploadedAt = $data['uploaded_at'] ?? $data['uploadedAt'] ?? null;
+        $this->status = $data['status'] ?? self::STATUS_PENDING;
+        $this->documentPath = $data['document_path'] ?? $data['documentPath'] ?? '';
+        $this->signedAt = $data['signed_at'] ?? $data['signedAt'] ?? null;
         $this->createdAt = $data['created_at'] ?? $data['createdAt'] ?? null;
         $this->updatedAt = $data['updated_at'] ?? $data['updatedAt'] ?? null;
     }
@@ -41,10 +42,9 @@ class Document extends BaseModel
             'id' => $this->id,
             'client_id' => $this->clientId,
             'mission_id' => $this->missionId,
-            'title' => $this->title,
-            'file_path' => $this->filePath,
-            'file_type' => $this->fileType,
-            'uploaded_at' => $this->uploadedAt,
+            'status' => $this->status,
+            'document_path' => $this->documentPath,
+            'signed_at' => $this->signedAt,
             'created_at' => $this->createdAt,
             'updated_at' => $this->updatedAt,
         ];
@@ -52,7 +52,7 @@ class Document extends BaseModel
 
     public function findById(int $id): ?array
     {
-        return $this->fetchOne('SELECT * FROM `documents` WHERE `id` = :id', ['id' => $id]);
+        return $this->fetchOne('SELECT * FROM `engagement_letters` WHERE `id` = :id', ['id' => $id]);
     }
 
     public function findAll(array $filters = [], int $limit = 20, int $offset = 0): array
@@ -64,7 +64,7 @@ class Document extends BaseModel
         $params['offset'] = $offset;
 
         return $this->fetchAll(
-            "SELECT * FROM `documents`{$filterClause} ORDER BY `id` ASC LIMIT :limit OFFSET :offset",
+            "SELECT * FROM `engagement_letters`{$filterClause} ORDER BY `id` ASC LIMIT :limit OFFSET :offset",
             $params
         );
     }
@@ -74,13 +74,12 @@ class Document extends BaseModel
         $insertData = [
             'client_id' => $data['client_id'] ?? $data['clientId'] ?? null,
             'mission_id' => $data['mission_id'] ?? $data['missionId'] ?? null,
-            'title' => $data['title'] ?? '',
-            'file_path' => $data['file_path'] ?? $data['filePath'] ?? '',
-            'file_type' => $data['file_type'] ?? $data['fileType'] ?? '',
-            'uploaded_at' => $data['uploaded_at'] ?? $data['uploadedAt'] ?? null,
+            'status' => $data['status'] ?? self::STATUS_PENDING,
+            'document_path' => $data['document_path'] ?? $data['documentPath'] ?? '',
+            'signed_at' => $data['signed_at'] ?? $data['signedAt'] ?? null,
         ];
 
-        return $this->insert('documents', $insertData);
+        return $this->insert('engagement_letters', $insertData);
     }
 
     public function update(int $id, array $data): bool
@@ -95,41 +94,35 @@ class Document extends BaseModel
             $updateData['mission_id'] = $data['mission_id'] ?? $data['missionId'];
         }
 
-        if (isset($data['title'])) {
-            $updateData['title'] = $data['title'];
+        if (isset($data['status'])) {
+            $updateData['status'] = $data['status'];
         }
 
-        if (isset($data['file_path']) || isset($data['filePath'])) {
-            $updateData['file_path'] = $data['file_path'] ?? $data['filePath'];
+        if (isset($data['document_path']) || isset($data['documentPath'])) {
+            $updateData['document_path'] = $data['document_path'] ?? $data['documentPath'];
         }
 
-        if (isset($data['file_type']) || isset($data['fileType'])) {
-            $updateData['file_type'] = $data['file_type'] ?? $data['fileType'];
-        }
-
-        if (isset($data['uploaded_at']) || isset($data['uploadedAt'])) {
-            $updateData['uploaded_at'] = $data['uploaded_at'] ?? $data['uploadedAt'];
+        if (isset($data['signed_at']) || isset($data['signedAt'])) {
+            $updateData['signed_at'] = $data['signed_at'] ?? $data['signedAt'];
         }
 
         if (empty($updateData)) {
             return false;
         }
 
-        return $this->updateRecord('documents', $id, $updateData);
+        return $this->updateRecord('engagement_letters', $id, $updateData);
     }
 
     public function delete(int $id): bool
     {
-        return $this->deleteRecord('documents', $id);
+        return $this->deleteRecord('engagement_letters', $id);
     }
 
-    public function findByClient(int $clientId): array
+    public function markAsSigned(int $id): bool
     {
-        return $this->fetchAll('SELECT * FROM `documents` WHERE `client_id` = :client_id ORDER BY `id` ASC', ['client_id' => $clientId]);
-    }
-
-    public function findByMission(int $missionId): array
-    {
-        return $this->fetchAll('SELECT * FROM `documents` WHERE `mission_id` = :mission_id ORDER BY `id` ASC', ['mission_id' => $missionId]);
+        return $this->updateRecord('engagement_letters', $id, [
+            'status' => self::STATUS_SIGNED,
+            'signed_at' => date('Y-m-d H:i:s'),
+        ]);
     }
 }
