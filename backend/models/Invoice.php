@@ -148,6 +148,24 @@ class Invoice extends BaseModel
         return $this->fetchAll('SELECT * FROM `invoices` WHERE `client_id` = :client_id ORDER BY `id` ASC', ['client_id' => $clientId]);
     }
 
+    public function getClient(): ?array
+    {
+        if ($this->clientId === null) {
+            return null;
+        }
+
+        return $this->fetchOne('SELECT * FROM `clients` WHERE `id` = :id', ['id' => $this->clientId]);
+    }
+
+    public function getPayments(): array
+    {
+        if ($this->id === null) {
+            return [];
+        }
+
+        return $this->fetchAll('SELECT * FROM `payments` WHERE `invoice_id` = :invoice_id ORDER BY `payment_date` DESC', ['invoice_id' => $this->id]);
+    }
+
     public function calculateBalance(int $id): float
     {
         $invoice = $this->findById($id);

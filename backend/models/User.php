@@ -1,21 +1,25 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/BaseModel.php';
 /**
  * Modèle pour les utilisateurs.
  */
 class User extends BaseModel
 {
-    public const ROLE_ADMIN = 'admin';
-    public const ROLE_ACCOUNTANT = 'accountant';
-    public const ROLE_CLIENT = 'client';
+    public const ROLE_EXPERT = 'EXPERT';
+    public const ROLE_COLLABORATEUR = 'COLLABORATEUR';
+    public const ROLE_STAGIAIRE = 'STAGIAIRE';
+    public const ROLE_CLIENT = 'CLIENT';
 
     protected ?int $id = null;
-    protected string $firstName = '';
-    protected string $lastName = '';
+    protected string $fullName = '';
     protected string $email = '';
+    protected string $phone = '';
     protected string $passwordHash = '';
     protected string $role = self::ROLE_CLIENT;
+    protected bool $isActive = true;
+    protected ?string $lastLoginAt = null;
     protected ?string $createdAt = null;
     protected ?string $updatedAt = null;
 
@@ -28,11 +32,13 @@ class User extends BaseModel
     public function hydrate(array $data): void
     {
         $this->id = isset($data['id']) ? (int) $data['id'] : null;
-        $this->firstName = $data['first_name'] ?? $data['firstName'] ?? '';
-        $this->lastName = $data['last_name'] ?? $data['lastName'] ?? '';
+        $this->fullName = $data['full_name'] ?? $data['fullName'] ?? '';
         $this->email = $data['email'] ?? '';
+        $this->phone = $data['phone'] ?? '';
         $this->passwordHash = $data['password_hash'] ?? $data['passwordHash'] ?? '';
         $this->role = $data['role'] ?? self::ROLE_CLIENT;
+        $this->isActive = isset($data['is_active']) ? (bool) $data['is_active'] : true;
+        $this->lastLoginAt = $data['last_login_at'] ?? $data['lastLoginAt'] ?? null;
         $this->createdAt = $data['created_at'] ?? $data['createdAt'] ?? null;
         $this->updatedAt = $data['updated_at'] ?? $data['updatedAt'] ?? null;
     }
@@ -41,10 +47,12 @@ class User extends BaseModel
     {
         $result = [
             'id' => $this->id,
-            'first_name' => $this->firstName,
-            'last_name' => $this->lastName,
+            'full_name' => $this->fullName,
             'email' => $this->email,
+            'phone' => $this->phone,
             'role' => $this->role,
+            'is_active' => $this->isActive,
+            'last_login_at' => $this->lastLoginAt,
             'created_at' => $this->createdAt,
             'updated_at' => $this->updatedAt,
         ];
@@ -78,11 +86,13 @@ class User extends BaseModel
     public function create(array $data): int
     {
         $insertData = [
-            'first_name' => $data['first_name'] ?? $data['firstName'] ?? '',
-            'last_name' => $data['last_name'] ?? $data['lastName'] ?? '',
+            'full_name' => $data['full_name'] ?? $data['fullName'] ?? '',
             'email' => $data['email'] ?? '',
+            'phone' => $data['phone'] ?? '',
             'password_hash' => $data['password_hash'] ?? $data['passwordHash'] ?? $data['password'] ?? '',
             'role' => $data['role'] ?? self::ROLE_CLIENT,
+            'is_active' => isset($data['is_active']) ? (int) $data['is_active'] : 1,
+            'last_login_at' => $data['last_login_at'] ?? $data['lastLoginAt'] ?? null,
         ];
 
         return $this->insert('users', $insertData);
@@ -101,20 +111,28 @@ class User extends BaseModel
     {
         $updateData = [];
 
-        if (isset($data['first_name']) || isset($data['firstName'])) {
-            $updateData['first_name'] = $data['first_name'] ?? $data['firstName'];
-        }
-
-        if (isset($data['last_name']) || isset($data['lastName'])) {
-            $updateData['last_name'] = $data['last_name'] ?? $data['lastName'];
+        if (isset($data['full_name']) || isset($data['fullName'])) {
+            $updateData['full_name'] = $data['full_name'] ?? $data['fullName'];
         }
 
         if (isset($data['email'])) {
             $updateData['email'] = $data['email'];
         }
 
+        if (isset($data['phone'])) {
+            $updateData['phone'] = $data['phone'];
+        }
+
         if (isset($data['role'])) {
             $updateData['role'] = $data['role'];
+        }
+
+        if (isset($data['is_active'])) {
+            $updateData['is_active'] = (int) $data['is_active'];
+        }
+
+        if (isset($data['last_login_at']) || isset($data['lastLoginAt'])) {
+            $updateData['last_login_at'] = $data['last_login_at'] ?? $data['lastLoginAt'];
         }
 
         if (isset($data['password'])) {
@@ -151,5 +169,56 @@ class User extends BaseModel
         }
 
         return password_verify($password, $user['password_hash']);
+    }
+
+    public function getMissions(): array
+    {
+        if ($this->id === null) {
+            return [];
+        }
+
+        return $this->fetchAll(
+            'SELECT m.* FROM `missions` m
+             INNER JOIN `mission_assignments` ma ON ma.mission_id = m.id
+             WHERE ma.user_id = :user_id
+             ORDER BY m.id ASC',
+            ['user_id' => $this->id]
+        );
+    }
+
+    public function getComments(): array
+    {
+        if ($this->id === null) {
+            return [];
+        }
+
+        return $this->fetchAll('SELECT * FROM `comments` WHERE `user_id` = :user_id ORDER BY `id` ASC', ['user_id' => $this->id]);
+    }
+
+    public function getTimesheets(): array
+    {
+        if ($this->id === null) {
+            return [];
+        }
+
+        return $this->fetchAll('SELECT * FROM `timesheets` WHERE `user_id` = :user_id ORDER BY `entry_date` DESC', ['user_id' => $this->id]);
+    }
+
+    public function getNotifications(): array
+    {
+        if ($this->id === null) {
+            return [];
+        }
+
+        return $this->fetchAll('SELECT * FROM `notifications` WHERE `user_id` = :user_id ORDER BY `created_at` DESC', ['user_id' => $this->id]);
+    }
+
+    public function getAuditLogs(): array
+    {
+        if ($this->id === null) {
+            return [];
+        }
+
+        return $this->fetchAll('SELECT * FROM `audit_logs` WHERE `user_id` = :user_id ORDER BY `created_at` DESC', ['user_id' => $this->id]);
     }
 }

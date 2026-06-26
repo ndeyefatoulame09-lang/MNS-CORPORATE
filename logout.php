@@ -1,3 +1,5 @@
 <?php
-// Fichier initial du projet MNS_CORPORATE.
-?>
+declare(strict_types=1);
+require_once __DIR__ . '/backend/controllers/auth_controller.php';
+
+handleLogout();

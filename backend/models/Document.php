@@ -132,4 +132,22 @@ class Document extends BaseModel
     {
         return $this->fetchAll('SELECT * FROM `documents` WHERE `mission_id` = :mission_id ORDER BY `id` ASC', ['mission_id' => $missionId]);
     }
+
+    public function getClient(): ?array
+    {
+        if ($this->clientId === null) {
+            return null;
+        }
+
+        return $this->fetchOne('SELECT * FROM `clients` WHERE `id` = :id', ['id' => $this->clientId]);
+    }
+
+    public function getMission(): ?array
+    {
+        if ($this->missionId === null) {
+            return null;
+        }
+
+        return $this->fetchOne('SELECT * FROM `missions` WHERE `id` = :id', ['id' => $this->missionId]);
+    }
 }

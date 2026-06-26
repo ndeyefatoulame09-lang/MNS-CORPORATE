@@ -127,4 +127,25 @@ class Payment extends BaseModel
     {
         return $this->fetchAll('SELECT * FROM `payments` WHERE `invoice_id` = :invoice_id ORDER BY `id` ASC', ['invoice_id' => $invoiceId]);
     }
+
+    public function getInvoice(): ?array
+    {
+        if ($this->invoiceId === null) {
+            return null;
+        }
+
+        return $this->fetchOne('SELECT * FROM `invoices` WHERE `id` = :id', ['id' => $this->invoiceId]);
+    }
+
+    public function getClient(): ?array
+    {
+        if ($this->invoiceId === null) {
+            return null;
+        }
+
+        return $this->fetchOne(
+            'SELECT c.* FROM `clients` c JOIN `invoices` i ON c.id = i.client_id WHERE i.id = :invoice_id',
+            ['invoice_id' => $this->invoiceId]
+        );
+    }
 }

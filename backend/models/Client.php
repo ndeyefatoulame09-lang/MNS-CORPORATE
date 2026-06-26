@@ -146,4 +146,59 @@ class Client extends BaseModel
     {
         return $this->deleteRecord('clients', $id);
     }
+
+    public function getMissions(int $clientId = null): array
+    {
+        $clientId = $clientId ?? $this->id;
+
+        if ($clientId === null) {
+            return [];
+        }
+
+        return $this->fetchAll('SELECT * FROM `missions` WHERE `client_id` = :client_id ORDER BY `id` ASC', ['client_id' => $clientId]);
+    }
+
+    public function getDocuments(int $clientId = null): array
+    {
+        $clientId = $clientId ?? $this->id;
+
+        if ($clientId === null) {
+            return [];
+        }
+
+        return $this->fetchAll('SELECT * FROM `documents` WHERE `client_id` = :client_id ORDER BY `id` ASC', ['client_id' => $clientId]);
+    }
+
+    public function getInvoices(int $clientId = null): array
+    {
+        $clientId = $clientId ?? $this->id;
+
+        if ($clientId === null) {
+            return [];
+        }
+
+        return $this->fetchAll('SELECT * FROM `invoices` WHERE `client_id` = :client_id ORDER BY `id` ASC', ['client_id' => $clientId]);
+    }
+
+    public function getFiscalDeadlines(int $clientId = null): array
+    {
+        $clientId = $clientId ?? $this->id;
+
+        if ($clientId === null) {
+            return [];
+        }
+
+        return $this->fetchAll('SELECT * FROM `fiscal_deadlines` WHERE `client_id` = :client_id ORDER BY `due_date` ASC', ['client_id' => $clientId]);
+    }
+
+    public function getEngagementLetters(int $clientId = null): array
+    {
+        $clientId = $clientId ?? $this->id;
+
+        if ($clientId === null) {
+            return [];
+        }
+
+        return $this->fetchAll('SELECT * FROM `engagement_letters` WHERE `client_id` = :client_id ORDER BY `id` ASC', ['client_id' => $clientId]);
+    }
 }

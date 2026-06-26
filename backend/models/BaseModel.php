@@ -1,8 +1,6 @@
 <?php
 declare(strict_types=1);
 
-use PDO;
-
 /**
  * Classe de base pour tous les modèles.
  */

@@ -160,4 +160,58 @@ class Mission extends BaseModel
     {
         return $this->fetchAll('SELECT * FROM `missions` WHERE `assigned_user_id` = :assigned_user_id ORDER BY `id` ASC', ['assigned_user_id' => $userId]);
     }
+
+    public function getClient(): ?array
+    {
+        if ($this->clientId === null) {
+            return null;
+        }
+
+        return $this->fetchOne('SELECT * FROM `clients` WHERE `id` = :id', ['id' => $this->clientId]);
+    }
+
+    public function getAssignedUser(): ?array
+    {
+        if ($this->assignedUserId === null) {
+            return null;
+        }
+
+        return $this->fetchOne('SELECT * FROM `users` WHERE `id` = :id', ['id' => $this->assignedUserId]);
+    }
+
+    public function getDocuments(): array
+    {
+        if ($this->id === null) {
+            return [];
+        }
+
+        return $this->fetchAll('SELECT * FROM `documents` WHERE `mission_id` = :mission_id ORDER BY `id` ASC', ['mission_id' => $this->id]);
+    }
+
+    public function getComments(): array
+    {
+        if ($this->id === null) {
+            return [];
+        }
+
+        return $this->fetchAll('SELECT * FROM `comments` WHERE `mission_id` = :mission_id ORDER BY `created_at` DESC', ['mission_id' => $this->id]);
+    }
+
+    public function getTimesheets(): array
+    {
+        if ($this->id === null) {
+            return [];
+        }
+
+        return $this->fetchAll('SELECT * FROM `timesheets` WHERE `mission_id` = :mission_id ORDER BY `entry_date` DESC', ['mission_id' => $this->id]);
+    }
+
+    public function getAssignments(): array
+    {
+        if ($this->id === null) {
+            return [];
+        }
+
+        return $this->fetchAll('SELECT * FROM `mission_assignments` WHERE `mission_id` = :mission_id ORDER BY `id` ASC', ['mission_id' => $this->id]);
+    }
 }
