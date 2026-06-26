@@ -1,0 +1,6 @@
+/frontend/assets/uploads/*
+!/frontend/assets/uploads/.gitkeep
+/exports/*
+!/exports/.gitkeep
+/pdf/*
+!/pdf/.gitkeep
