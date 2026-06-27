@@ -3,7 +3,9 @@
 -- Plateforme de gestion d'un cabinet d'expertise comptable
 -- =========================================================
 
-CREATE DATABASE IF NOT EXISTS mns_corporate_db
+DROP DATABASE IF EXISTS mns_corporate_db;
+
+CREATE DATABASE mns_corporate_db
 CHARACTER SET utf8mb4
 COLLATE utf8mb4_unicode_ci;
 
@@ -379,14 +381,14 @@ CREATE INDEX idx_payments_invoice ON payments(invoice_id);
 
 -- =========================================================
 -- DONNEES DE DEMONSTRATION
--- Mot de passe des quatre comptes : password
+-- Mot de passe de tous les comptes : password
 -- =========================================================
 
 INSERT INTO users (id, full_name, email, phone, password_hash, role) VALUES
-(1, 'Awa Ndiaye', 'expert@mns-corporate.sn', '770000001', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.', 'EXPERT'),
-(2, 'Mamadou Diallo', 'collaborateur@mns-corporate.sn', '770000002', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.', 'COLLABORATEUR'),
-(3, 'Fatou Sow', 'stagiaire@mns-corporate.sn', '770000003', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.', 'STAGIAIRE'),
-(4, 'Ibrahima Ba', 'client@mns-corporate.sn', '770000004', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.', 'CLIENT');
+(1, 'Awa Ndiaye', 'expert@mns-corporate.sn', '770000001', '$2y$10$RS7uBlkMvlsL0SoXdY.G.OFpVg94g9yXVBWRJfXxQL49ATs7HeXfG', 'EXPERT'),
+(2, 'Mamadou Diallo', 'collaborateur@mns-corporate.sn', '770000002', '$2y$10$RS7uBlkMvlsL0SoXdY.G.OFpVg94g9yXVBWRJfXxQL49ATs7HeXfG', 'COLLABORATEUR'),
+(3, 'Fatou Sow', 'stagiaire@mns-corporate.sn', '770000003', '$2y$10$RS7uBlkMvlsL0SoXdY.G.OFpVg94g9yXVBWRJfXxQL49ATs7HeXfG', 'STAGIAIRE'),
+(4, 'Ibrahima Ba', 'client@mns-corporate.sn', '770000004', '$2y$10$RS7uBlkMvlsL0SoXdY.G.OFpVg94g9yXVBWRJfXxQL49ATs7HeXfG', 'CLIENT');
 
 INSERT INTO clients (
     id, user_id, company_name, legal_form, contact_name, email, phone,
@@ -460,3 +462,113 @@ INSERT INTO engagement_letters (
 
 INSERT INTO audit_logs (user_id, action, description, ip_address) VALUES
 (1, 'CREATION_BASE', 'Initialisation des donnees de demonstration.', '127.0.0.1');
+
+-- Complements de demonstration pour la soutenance
+INSERT INTO users (id, full_name, email, phone, password_hash, role) VALUES
+(5, 'Cheikh Fall', 'collaborateur2@mns-corporate.sn', '770000005', '$2y$10$RS7uBlkMvlsL0SoXdY.G.OFpVg94g9yXVBWRJfXxQL49ATs7HeXfG', 'COLLABORATEUR'),
+(6, 'Marieme Diop', 'client2@mns-corporate.sn', '770000006', '$2y$10$RS7uBlkMvlsL0SoXdY.G.OFpVg94g9yXVBWRJfXxQL49ATs7HeXfG', 'CLIENT'),
+(7, 'Ousmane Sarr', 'client3@mns-corporate.sn', '770000007', '$2y$10$RS7uBlkMvlsL0SoXdY.G.OFpVg94g9yXVBWRJfXxQL49ATs7HeXfG', 'CLIENT');
+
+INSERT INTO clients (
+    id, user_id, company_name, legal_form, contact_name, email, phone,
+    address, ninea, rccm, tax_regime, accounting_year_start, accounting_year_end
+) VALUES
+(2, 6, 'Teranga Distribution SA', 'SA', 'Marieme Diop', 'client2@mns-corporate.sn',
+    '770000006', 'Thies, Senegal', '987654321', 'SN-THS-2026-B-4021',
+    'Reel simplifie', '2026-01-01', '2026-12-31'),
+(3, 7, 'Casamance Agro SARL', 'SARL', 'Ousmane Sarr', 'client3@mns-corporate.sn',
+    '770000007', 'Ziguinchor, Senegal', '456789123', 'SN-ZIG-2026-B-7710',
+    'Contribution globale unique', '2026-01-01', '2026-12-31');
+
+INSERT INTO missions (
+    id, client_id, mission_catalog_id, title, description, start_date,
+    planned_end_date, status, priority, estimated_hours, created_by
+) VALUES
+(3, 2, 3, 'IS annuel 2025',
+    'Preparation de la liasse fiscale et de la declaration IS.',
+    '2026-03-15', '2026-04-30', 'TERMINEE', 'MOYENNE', 24.00, 1),
+(4, 2, 5, 'Paie mensuelle - Juin 2026',
+    'Preparation des bulletins et declarations sociales.',
+    '2026-06-01', '2026-06-25', 'EN_COURS', 'MOYENNE', 18.00, 1),
+(5, 3, 4, 'Revision comptable 2025',
+    'Revision des comptes annuels et controle des soldes.',
+    '2026-05-01', '2026-05-31', 'EN_RETARD', 'HAUTE', 35.00, 1),
+(6, 3, 6, 'Conseil fiscal investissement',
+    'Analyse fiscale pour un projet d extension.',
+    '2026-07-01', '2026-07-10', 'A_FAIRE', 'BASSE', 10.00, 1);
+
+INSERT INTO mission_assignments (
+    mission_id, user_id, assigned_by, planned_start_date, planned_end_date, assignment_role
+) VALUES
+(3, 5, 1, '2026-03-15', '2026-04-30', 'Responsable mission'),
+(4, 5, 1, '2026-06-01', '2026-06-25', 'Responsable paie'),
+(5, 2, 1, '2026-05-01', '2026-05-31', 'Responsable mission'),
+(5, 3, 1, '2026-05-05', '2026-05-25', 'Assistant revision');
+
+INSERT INTO fiscal_deadlines (
+    client_id, mission_id, title, description, deadline_date, status
+) VALUES
+(2, 3, 'Solde IS Teranga 2025',
+    'Paiement du solde IS apres cloture annuelle.', '2026-04-30', 'TERMINEE'),
+(3, 5, 'Depot etats financiers Casamance Agro',
+    'Depot des etats financiers annuels.', '2026-05-31', 'EN_RETARD'),
+(2, 4, 'Declaration sociale Juin 2026',
+    'Declaration sociale mensuelle.', '2026-06-25', 'A_VENIR');
+
+INSERT INTO timesheets (
+    mission_id, user_id, work_date, hours_worked, description, status
+) VALUES
+(3, 5, '2026-04-10', 6.00, 'Preparation de la liasse fiscale.', 'VALIDE'),
+(4, 5, '2026-06-12', 5.00, 'Preparation des bulletins de paie.', 'SAISI'),
+(5, 2, '2026-05-14', 7.00, 'Controle des comptes clients.', 'REFUSE'),
+(5, 3, '2026-05-18', 4.50, 'Pointage des soldes fournisseurs.', 'VALIDE');
+
+INSERT INTO documents (
+    id, client_id, mission_id, uploaded_by, title, original_filename, stored_filename,
+    file_path, file_type, file_size, document_category, status
+) VALUES
+(1, 1, 1, 4, 'Releve bancaire Juin 2026', 'releve-demo.png',
+    '5e4114c63e0f9051a63dcf79750d6c3e.png',
+    'frontend/assets/uploads/documents/5e4114c63e0f9051a63dcf79750d6c3e.png',
+    'image/png', 1024, 'RELEVE_BANCAIRE', 'NOUVEAU');
+
+INSERT INTO invoices (
+    id, client_id, mission_id, invoice_number, issue_date, due_date,
+    subtotal, tax_rate, tax_amount, total_amount, status, notes, created_by
+) VALUES
+(3, 2, 3, 'FAC-2026-0003', '2026-04-01', '2026-04-30',
+    220000.00, 18.00, 39600.00, 259600.00,
+    'PAYEE', 'Honoraires IS annuel.', 1),
+(4, 3, 5, 'FAC-2026-0004', '2026-05-01', '2026-05-15',
+    180000.00, 18.00, 32400.00, 212400.00,
+    'EN_RETARD', 'Honoraires de revision comptable.', 1);
+
+INSERT INTO payments (
+    invoice_id, payment_date, amount, payment_method, reference_number, received_by
+) VALUES
+(3, '2026-04-20', 259600.00, 'CHEQUE', 'CHQ-2026-0042', 1),
+(4, '2026-05-20', 50000.00, 'WAVE', 'WAVE-2026-7788', 1);
+
+INSERT INTO engagement_letters (
+    client_id, mission_id, title, status, sent_at, signed_at, signed_by_name, signature_text, created_by
+) VALUES
+(2, 3, 'Lettre de mission - IS annuel 2025', 'SIGNEE', '2026-03-20 10:30:00', '2026-03-21 16:45:00', 'Marieme Diop', 'Bon pour accord pour la mission IS annuel 2025.', 1),
+(3, 5, 'Lettre de mission - Revision comptable 2025', 'BROUILLON', NULL, NULL, NULL, NULL, 1);
+
+INSERT INTO notifications (
+    user_id, title, message, channel, status, related_type, related_id, created_at, sent_at
+) VALUES
+(4, 'Facture envoyee', 'Une facture vous a ete envoyee.', 'INTERNE', 'A_ENVOYER', 'INVOICE', 2, '2026-06-10 09:30:00', NULL),
+(4, 'Document recu', 'Votre document est en cours de traitement.', 'INTERNE', 'LUE', 'DOCUMENT', 1, '2026-06-11 10:00:00', '2026-06-11 10:05:00'),
+(2, 'Timesheet refuse', 'Votre saisie du 2026-05-14 a ete refusee.', 'INTERNE', 'A_ENVOYER', 'TIMESHEET', 5, '2026-05-15 08:30:00', NULL),
+(1, 'Lettre signee', 'Une lettre de mission a ete signee.', 'INTERNE', 'LUE', 'ENGAGEMENT_LETTER', 2, '2026-03-21 16:50:00', '2026-03-21 16:55:00');
+
+INSERT INTO audit_logs (user_id, action, description, ip_address) VALUES
+(1, 'CONNEXION_UTILISATEUR', 'Connexion utilisateur reussie', '127.0.0.1'),
+(1, 'CREATION_CLIENT', 'Creation du client Teranga Distribution SA', '127.0.0.1'),
+(1, 'CREATION_MISSION', 'Creation de la mission IS annuel 2025', '127.0.0.1'),
+(1, 'ENVOI_FACTURE', 'Facture FAC-2026-0002 envoyee au client', '127.0.0.1'),
+(1, 'ENREGISTREMENT_PAIEMENT', 'Paiement partiel enregistre sur FAC-2026-0001', '127.0.0.1'),
+(4, 'CONSULTATION_DOCUMENT', 'Consultation du document Releve bancaire Juin 2026', '127.0.0.1'),
+(6, 'SIGNATURE_LETTRE_MISSION', 'Signature lettre de mission IS annuel 2025', '127.0.0.1'),
+(1, 'EXPORT_CLIENTS_CSV', 'Export CSV clients de demonstration', '127.0.0.1');

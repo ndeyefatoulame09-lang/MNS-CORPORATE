@@ -51,15 +51,45 @@ class AuditLog extends BaseModel
     public function findAll(array $filters = [], int $limit = 20, int $offset = 0): array
     {
         $params = [];
-        $filterClause = $this->buildFilterClause($filters, $params);
+        $filterClause = $this->buildAuditFilterClause($filters, $params);
 
         $params['limit'] = $limit;
         $params['offset'] = $offset;
 
         return $this->fetchAll(
-            "SELECT * FROM `audit_logs`{$filterClause} ORDER BY `id` ASC LIMIT :limit OFFSET :offset",
+            "SELECT a.*, u.full_name, u.role
+             FROM `audit_logs` a
+             LEFT JOIN `users` u ON u.id = a.user_id
+             {$filterClause}
+             ORDER BY a.created_at DESC, a.id DESC
+             LIMIT :limit OFFSET :offset",
             $params
         );
+    }
+
+    public function countAll(array $filters = []): int
+    {
+        $params = [];
+        $filterClause = $this->buildAuditFilterClause($filters, $params);
+        $row = $this->fetchOne(
+            "SELECT COUNT(*) AS total
+             FROM `audit_logs` a
+             LEFT JOIN `users` u ON u.id = a.user_id
+             {$filterClause}",
+            $params
+        );
+
+        return $row === null ? 0 : (int) $row['total'];
+    }
+
+    public function findUsers(): array
+    {
+        return $this->fetchAll('SELECT id, full_name, role FROM `users` ORDER BY full_name ASC');
+    }
+
+    public function findActions(): array
+    {
+        return $this->fetchAll('SELECT DISTINCT action FROM `audit_logs` ORDER BY action ASC');
     }
 
     public function create(array $data): int
@@ -113,5 +143,37 @@ class AuditLog extends BaseModel
         $insertId = $this->create($data);
 
         return $insertId > 0;
+    }
+
+    private function buildAuditFilterClause(array $filters, array &$params): string
+    {
+        $where = [];
+
+        if (($filters['user_id'] ?? '') !== '') {
+            $where[] = 'a.user_id = :user_id';
+            $params['user_id'] = $filters['user_id'];
+        }
+
+        if (($filters['action'] ?? '') !== '') {
+            $where[] = 'a.action = :action';
+            $params['action'] = $filters['action'];
+        }
+
+        if (($filters['date_from'] ?? '') !== '') {
+            $where[] = 'DATE(a.created_at) >= :date_from';
+            $params['date_from'] = $filters['date_from'];
+        }
+
+        if (($filters['date_to'] ?? '') !== '') {
+            $where[] = 'DATE(a.created_at) <= :date_to';
+            $params['date_to'] = $filters['date_to'];
+        }
+
+        if (($filters['q'] ?? '') !== '') {
+            $where[] = '(a.description LIKE :q OR a.action LIKE :q OR a.ip_address LIKE :q)';
+            $params['q'] = '%' . $filters['q'] . '%';
+        }
+
+        return $where === [] ? '' : ' WHERE ' . implode(' AND ', $where);
     }
 }

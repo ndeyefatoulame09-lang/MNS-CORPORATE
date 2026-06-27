@@ -70,7 +70,7 @@ require_once __DIR__ . '/../includes/header.php';
                             <?php if ($monthlyRevenue === []): ?>
                                 <p class="text-muted mb-0">Aucun paiement enregistre.</p>
                             <?php else: ?>
-                                <canvas id="revenueChart" height="160"></canvas>
+                                <div style="height:260px"><canvas id="revenueChart"></canvas></div>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -79,7 +79,7 @@ require_once __DIR__ . '/../includes/header.php';
                     <div class="card shadow-sm h-100">
                         <div class="card-body">
                             <h2 class="h6">Missions par statut</h2>
-                            <canvas id="missionsChart" height="180"></canvas>
+                            <div style="height:260px"><canvas id="missionsChart"></canvas></div>
                         </div>
                     </div>
                 </div>
@@ -90,7 +90,7 @@ require_once __DIR__ . '/../includes/header.php';
                             <?php if ($occupation === []): ?>
                                 <p class="text-muted mb-0">Aucun collaborateur actif.</p>
                             <?php else: ?>
-                                <canvas id="occupationChart" height="180"></canvas>
+                                <div style="height:260px"><canvas id="occupationChart"></canvas></div>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -118,21 +118,21 @@ require_once __DIR__ . '/../includes/header.php';
                 new Chart(document.getElementById('revenueChart'), {
                     type: 'bar',
                     data: { labels: revenueData.map(row => row.label), datasets: [{ label: 'FCFA', data: revenueData.map(row => Number(row.amount)), backgroundColor: '#2563eb' }] },
-                    options: { responsive: true, plugins: { legend: { display: false } } }
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
                 });
             }
             if (document.getElementById('missionsChart')) {
                 new Chart(document.getElementById('missionsChart'), {
                     type: 'doughnut',
                     data: { labels: Object.keys(missionData), datasets: [{ data: Object.values(missionData), backgroundColor: ['#64748b','#0d6efd','#198754','#dc3545','#6c757d'] }] },
-                    options: { responsive: true }
+                    options: { responsive: true, maintainAspectRatio: false }
                 });
             }
             if (document.getElementById('occupationChart')) {
                 new Chart(document.getElementById('occupationChart'), {
                     type: 'bar',
                     data: { labels: occupationData.map(row => row.full_name), datasets: [{ label: '% occupation', data: occupationData.map(row => Number(row.occupation_rate)), backgroundColor: '#198754' }] },
-                    options: { responsive: true, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } }
+                    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } }
                 });
             }
             </script>

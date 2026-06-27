@@ -56,6 +56,16 @@ function handleLogin(): void
         !password_verify($password, $user['password_hash']) ||
         (int) $user['is_active'] === 0
     ) {
+        try {
+            (new AuditLog($pdo))->log([
+                'user_id' => isset($user['id']) ? (int) $user['id'] : null,
+                'action' => 'ECHEC_CONNEXION',
+                'description' => 'Echec de connexion utilisateur',
+                'ip_address' => $_SERVER['REMOTE_ADDR'] ?? null,
+            ]);
+        } catch (Throwable $exception) {
+            // Ne pas bloquer l'affichage du message de connexion.
+        }
         $_SESSION['old_input'] = ['email' => $email];
         setFlashMessage('error', 'Identifiants invalides.');
         require_once __DIR__ . '/../../frontend/views/auth/login_view.php';
@@ -76,7 +86,7 @@ function handleLogin(): void
         $auditLog = new AuditLog($pdo);
         $auditLog->log([
             'user_id' => (int) $user['id'],
-            'action' => 'login',
+            'action' => 'CONNEXION_UTILISATEUR',
             'description' => 'Connexion réussie',
             'ip_address' => $_SERVER['REMOTE_ADDR'] ?? null,
         ]);
@@ -97,7 +107,7 @@ function handleLogout(): void
             $auditLog = new AuditLog($pdo);
             $auditLog->log([
                 'user_id' => (int) $_SESSION['user']['id'],
-                'action' => 'logout',
+                'action' => 'DECONNEXION_UTILISATEUR',
                 'description' => 'Déconnexion utilisateur',
                 'ip_address' => $_SERVER['REMOTE_ADDR'] ?? null,
             ]);
