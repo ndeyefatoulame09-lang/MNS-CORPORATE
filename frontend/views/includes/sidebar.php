@@ -17,6 +17,15 @@ $user = currentUser();
 				<li class="nav-item mb-2"><a class="nav-link" href="/MNS_CORPORATE/frontend/views/clients/list.php">Clients</a></li>
 				<li class="nav-item mb-2"><a class="nav-link" href="/MNS_CORPORATE/frontend/views/missions/list.php">Missions</a></li>
 				<li class="nav-item mb-2"><a class="nav-link" href="/MNS_CORPORATE/frontend/views/missions/catalog_list.php">Catalogue missions</a></li>
+				<li class="nav-item mb-2"><a class="nav-link" href="/MNS_CORPORATE/frontend/views/notifications/list.php">Notifications</a></li>
+				<li class="nav-item mb-2"><a class="nav-link" href="/MNS_CORPORATE/frontend/views/timesheets/list.php">Gestion des timesheets</a></li>
+				<li class="nav-item mb-2"><a class="nav-link" href="/MNS_CORPORATE/frontend/views/timesheets/summary.php">Synthese temps</a></li>
+			<?php elseif (isset($user['role']) && in_array($user['role'], ['COLLABORATEUR', 'STAGIAIRE'], true)): ?>
+				<li class="nav-item mb-2"><a class="nav-link" href="/MNS_CORPORATE/frontend/views/notifications/list.php">Mes notifications</a></li>
+				<li class="nav-item mb-2"><a class="nav-link" href="/MNS_CORPORATE/frontend/views/timesheets/list.php">Mes timesheets</a></li>
+				<li class="nav-item mb-2"><a class="nav-link" href="/MNS_CORPORATE/frontend/views/timesheets/create.php">Ajouter un temps passe</a></li>
+			<?php elseif (isset($user['role']) && $user['role'] === 'CLIENT'): ?>
+				<li class="nav-item mb-2"><a class="nav-link" href="/MNS_CORPORATE/frontend/views/notifications/list.php">Mes notifications</a></li>
 			<?php endif; ?>
 			<li class="nav-item mb-2"><a class="nav-link" href="/MNS_CORPORATE/frontend/views/deadlines/list.php">Echeances fiscales</a></li>
 			<li class="nav-item mb-2"><a class="nav-link" href="/MNS_CORPORATE/frontend/views/documents/list.php">Documents</a></li>
