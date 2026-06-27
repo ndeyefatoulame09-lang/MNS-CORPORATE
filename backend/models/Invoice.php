@@ -1,198 +1,148 @@
 <?php
 declare(strict_types=1);
 
-/**
- * Modèle pour les factures.
- */
+require_once __DIR__ . '/BaseModel.php';
+
 class Invoice extends BaseModel
 {
-    public const STATUS_DRAFT = 'draft';
-    public const STATUS_SENT = 'sent';
-    public const STATUS_PAID = 'paid';
-
-    protected ?int $id = null;
-    protected ?int $clientId = null;
-    protected float $amount = 0.0;
-    protected string $currency = 'EUR';
-    protected string $status = self::STATUS_DRAFT;
-    protected ?string $dueDate = null;
-    protected ?string $issuedAt = null;
-    protected ?string $paidAt = null;
-    protected ?float $balance = null;
-    protected ?string $createdAt = null;
-    protected ?string $updatedAt = null;
-
-    public function __construct(PDO $db, array $data = [])
-    {
-        parent::__construct($db);
-        $this->hydrate($data);
-    }
-
-    public function hydrate(array $data): void
-    {
-        $this->id = isset($data['id']) ? (int) $data['id'] : null;
-        $this->clientId = isset($data['client_id']) ? (int) $data['client_id'] : (isset($data['clientId']) ? (int) $data['clientId'] : null);
-        $this->amount = isset($data['amount']) ? (float) $data['amount'] : 0.0;
-        $this->currency = $data['currency'] ?? 'EUR';
-        $this->status = $data['status'] ?? self::STATUS_DRAFT;
-        $this->dueDate = $data['due_date'] ?? $data['dueDate'] ?? null;
-        $this->issuedAt = $data['issued_at'] ?? $data['issuedAt'] ?? null;
-        $this->paidAt = $data['paid_at'] ?? $data['paidAt'] ?? null;
-        $this->balance = isset($data['balance']) ? (float) $data['balance'] : null;
-        $this->createdAt = $data['created_at'] ?? $data['createdAt'] ?? null;
-        $this->updatedAt = $data['updated_at'] ?? $data['updatedAt'] ?? null;
-    }
-
-    public function toArray(): array
-    {
-        return [
-            'id' => $this->id,
-            'client_id' => $this->clientId,
-            'amount' => $this->amount,
-            'currency' => $this->currency,
-            'status' => $this->status,
-            'due_date' => $this->dueDate,
-            'issued_at' => $this->issuedAt,
-            'paid_at' => $this->paidAt,
-            'balance' => $this->balance,
-            'created_at' => $this->createdAt,
-            'updated_at' => $this->updatedAt,
-        ];
-    }
+    public const STATUSES = ['BROUILLON', 'ENVOYEE', 'PARTIELLEMENT_PAYEE', 'PAYEE', 'EN_RETARD', 'ANNULEE'];
 
     public function findById(int $id): ?array
     {
-        return $this->fetchOne('SELECT * FROM `invoices` WHERE `id` = :id', ['id' => $id]);
+        return $this->fetchOne(
+            'SELECT i.*, c.company_name, m.title AS mission_title, u.full_name AS creator_name
+             FROM invoices i
+             INNER JOIN clients c ON c.id = i.client_id
+             LEFT JOIN missions m ON m.id = i.mission_id
+             INNER JOIN users u ON u.id = i.created_by
+             WHERE i.id = :id',
+            ['id' => $id]
+        );
     }
 
     public function findAll(array $filters = [], int $limit = 20, int $offset = 0): array
     {
         $params = [];
-        $filterClause = $this->buildFilterClause($filters, $params);
-
+        $where = $this->where($filters, $params);
         $params['limit'] = $limit;
         $params['offset'] = $offset;
-
         return $this->fetchAll(
-            "SELECT * FROM `invoices`{$filterClause} ORDER BY `id` ASC LIMIT :limit OFFSET :offset",
+            "SELECT i.*, c.company_name, m.title AS mission_title,
+                    COALESCE(SUM(p.amount), 0) AS paid_amount,
+                    GREATEST(i.total_amount - COALESCE(SUM(p.amount), 0), 0) AS balance_due
+             FROM invoices i
+             INNER JOIN clients c ON c.id = i.client_id
+             LEFT JOIN missions m ON m.id = i.mission_id
+             LEFT JOIN payments p ON p.invoice_id = i.id
+             {$where}
+             GROUP BY i.id, c.company_name, m.title
+             ORDER BY i.issue_date DESC, i.id DESC LIMIT :limit OFFSET :offset",
             $params
         );
     }
 
+    public function countAll(array $filters = []): int
+    {
+        $params = [];
+        $where = $this->where($filters, $params);
+        $row = $this->fetchOne(
+            "SELECT COUNT(DISTINCT i.id) AS total FROM invoices i INNER JOIN clients c ON c.id = i.client_id LEFT JOIN missions m ON m.id = i.mission_id {$where}",
+            $params
+        );
+        return $row === null ? 0 : (int) $row['total'];
+    }
+
     public function create(array $data): int
     {
-        $insertData = [
-            'client_id' => $data['client_id'] ?? $data['clientId'] ?? null,
-            'amount' => isset($data['amount']) ? (float) $data['amount'] : 0.0,
-            'currency' => $data['currency'] ?? 'EUR',
-            'status' => $data['status'] ?? self::STATUS_DRAFT,
-            'due_date' => $data['due_date'] ?? $data['dueDate'] ?? null,
-            'issued_at' => $data['issued_at'] ?? $data['issuedAt'] ?? null,
-            'paid_at' => $data['paid_at'] ?? $data['paidAt'] ?? null,
-            'balance' => isset($data['balance']) ? (float) $data['balance'] : null,
-        ];
-
-        return $this->insert('invoices', $insertData);
+        return $this->insert('invoices', [
+            'client_id' => (int) $data['client_id'],
+            'mission_id' => ($data['mission_id'] ?? '') === '' ? null : (int) $data['mission_id'],
+            'invoice_number' => $data['invoice_number'] ?? '',
+            'issue_date' => $data['issue_date'] ?? null,
+            'due_date' => $data['due_date'] ?? null,
+            'subtotal' => (float) $data['subtotal'],
+            'tax_rate' => (float) $data['tax_rate'],
+            'tax_amount' => (float) $data['tax_amount'],
+            'total_amount' => (float) $data['total_amount'],
+            'status' => $data['status'] ?? 'BROUILLON',
+            'notes' => ($data['notes'] ?? '') === '' ? null : $data['notes'],
+            'created_by' => (int) $data['created_by'],
+        ]);
     }
 
     public function update(int $id, array $data): bool
     {
-        $updateData = [];
-
-        if (isset($data['client_id']) || isset($data['clientId'])) {
-            $updateData['client_id'] = $data['client_id'] ?? $data['clientId'];
-        }
-
-        if (isset($data['amount'])) {
-            $updateData['amount'] = (float) $data['amount'];
-        }
-
-        if (isset($data['currency'])) {
-            $updateData['currency'] = $data['currency'];
-        }
-
-        if (isset($data['status'])) {
-            $updateData['status'] = $data['status'];
-        }
-
-        if (isset($data['due_date']) || isset($data['dueDate'])) {
-            $updateData['due_date'] = $data['due_date'] ?? $data['dueDate'];
-        }
-
-        if (isset($data['issued_at']) || isset($data['issuedAt'])) {
-            $updateData['issued_at'] = $data['issued_at'] ?? $data['issuedAt'];
-        }
-
-        if (isset($data['paid_at']) || isset($data['paidAt'])) {
-            $updateData['paid_at'] = $data['paid_at'] ?? $data['paidAt'];
-        }
-
-        if (isset($data['balance'])) {
-            $updateData['balance'] = (float) $data['balance'];
-        }
-
-        if (empty($updateData)) {
-            return false;
-        }
-
-        return $this->updateRecord('invoices', $id, $updateData);
-    }
-
-    public function delete(int $id): bool
-    {
-        return $this->deleteRecord('invoices', $id);
-    }
-
-    public function findByClient(int $clientId): array
-    {
-        return $this->fetchAll('SELECT * FROM `invoices` WHERE `client_id` = :client_id ORDER BY `id` ASC', ['client_id' => $clientId]);
-    }
-
-    public function getClient(): ?array
-    {
-        if ($this->clientId === null) {
-            return null;
-        }
-
-        return $this->fetchOne('SELECT * FROM `clients` WHERE `id` = :id', ['id' => $this->clientId]);
-    }
-
-    public function getPayments(): array
-    {
-        if ($this->id === null) {
-            return [];
-        }
-
-        return $this->fetchAll('SELECT * FROM `payments` WHERE `invoice_id` = :invoice_id ORDER BY `payment_date` DESC', ['invoice_id' => $this->id]);
-    }
-
-    public function calculateBalance(int $id): float
-    {
-        $invoice = $this->findById($id);
-
-        if ($invoice === null) {
-            return 0.0;
-        }
-
-        $paid = $this->fetchOne(
-            'SELECT COALESCE(SUM(`amount`), 0) AS total_paid FROM `payments` WHERE `invoice_id` = :invoice_id',
-            ['invoice_id' => $id]
-        );
-
-        $totalPaid = isset($paid['total_paid']) ? (float) $paid['total_paid'] : 0.0;
-        $balance = (float) $invoice['amount'] - $totalPaid;
-
-        return $balance < 0.0 ? 0.0 : $balance;
-    }
-
-    public function markAsPaid(int $id): bool
-    {
-        $balance = $this->calculateBalance($id);
-
         return $this->updateRecord('invoices', $id, [
-            'status' => self::STATUS_PAID,
-            'paid_at' => date('Y-m-d H:i:s'),
-            'balance' => $balance,
+            'client_id' => (int) $data['client_id'],
+            'mission_id' => ($data['mission_id'] ?? '') === '' ? null : (int) $data['mission_id'],
+            'invoice_number' => $data['invoice_number'] ?? '',
+            'issue_date' => $data['issue_date'] ?? null,
+            'due_date' => $data['due_date'] ?? null,
+            'subtotal' => (float) $data['subtotal'],
+            'tax_rate' => (float) $data['tax_rate'],
+            'tax_amount' => (float) $data['tax_amount'],
+            'total_amount' => (float) $data['total_amount'],
+            'status' => $data['status'] ?? 'BROUILLON',
+            'notes' => ($data['notes'] ?? '') === '' ? null : $data['notes'],
         ]);
+    }
+
+    public function findByClient(int $clientId): array { return $this->findAll(['client_id' => $clientId], 100, 0); }
+    public function findByMission(int $missionId): array { return $this->findAll(['mission_id' => $missionId], 100, 0); }
+    public function getPaymentsTotal(int $invoiceId): float { $r=$this->fetchOne('SELECT COALESCE(SUM(amount),0) AS total FROM payments WHERE invoice_id = :id',['id'=>$invoiceId]); return $r ? (float)$r['total'] : 0.0; }
+    public function getRemainingBalance(int $invoiceId): float { $i=$this->findById($invoiceId); return $i ? max(0, (float)$i['total_amount'] - $this->getPaymentsTotal($invoiceId)) : 0.0; }
+
+    public function refreshPaymentStatus(int $invoiceId): bool
+    {
+        $invoice = $this->findById($invoiceId);
+        if ($invoice === null || $invoice['status'] === 'ANNULEE') { return false; }
+        $paid = $this->getPaymentsTotal($invoiceId);
+        $total = (float) $invoice['total_amount'];
+        $status = $paid <= 0 ? ((strtotime($invoice['due_date']) < strtotime(date('Y-m-d'))) ? 'EN_RETARD' : $invoice['status']) : ($paid >= $total ? 'PAYEE' : 'PARTIELLEMENT_PAYEE');
+        return $this->updateRecord('invoices', $invoiceId, ['status' => $status]);
+    }
+
+    public function markOverdue(): int
+    {
+        $stmt = $this->db->prepare("UPDATE invoices i SET status = 'EN_RETARD' WHERE i.due_date < CURDATE() AND i.status NOT IN ('PAYEE','ANNULEE') AND i.total_amount > (SELECT COALESCE(SUM(p.amount),0) FROM payments p WHERE p.invoice_id = i.id)");
+        $stmt->execute();
+        return $stmt->rowCount();
+    }
+
+    public function getBalanceAgedSummary(): array
+    {
+        return $this->fetchAll(
+            "SELECT i.*, c.company_name, COALESCE(SUM(p.amount),0) AS paid_amount,
+                    GREATEST(i.total_amount - COALESCE(SUM(p.amount),0),0) AS balance_due,
+                    DATEDIFF(CURDATE(), i.due_date) AS days_late
+             FROM invoices i
+             INNER JOIN clients c ON c.id = i.client_id
+             LEFT JOIN payments p ON p.invoice_id = i.id
+             WHERE i.status <> 'ANNULEE'
+             GROUP BY i.id, c.company_name
+             HAVING balance_due > 0
+             ORDER BY i.due_date ASC"
+        );
+    }
+
+    public function invoiceNumberExists(string $number, int $excludeId = 0): bool
+    {
+        $sql = 'SELECT id FROM invoices WHERE invoice_number = :number';
+        $params = ['number' => $number];
+        if ($excludeId > 0) { $sql .= ' AND id <> :id'; $params['id'] = $excludeId; }
+        return $this->fetchOne($sql, $params) !== null;
+    }
+
+    private function where(array $filters, array &$params): string
+    {
+        $where = [];
+        if (($filters['q'] ?? '') !== '') { $where[] = '(i.invoice_number LIKE :q OR c.company_name LIKE :q OR i.notes LIKE :q)'; $params['q'] = '%' . $filters['q'] . '%'; }
+        foreach (['client_id','mission_id','status'] as $f) { if (($filters[$f] ?? '') !== '') { $where[] = "i.$f = :$f"; $params[$f] = $filters[$f]; } }
+        if (($filters['issue_from'] ?? '') !== '') { $where[]='i.issue_date >= :issue_from'; $params['issue_from']=$filters['issue_from']; }
+        if (($filters['issue_to'] ?? '') !== '') { $where[]='i.issue_date <= :issue_to'; $params['issue_to']=$filters['issue_to']; }
+        if (($filters['due_from'] ?? '') !== '') { $where[]='i.due_date >= :due_from'; $params['due_from']=$filters['due_from']; }
+        if (($filters['due_to'] ?? '') !== '') { $where[]='i.due_date <= :due_to'; $params['due_to']=$filters['due_to']; }
+        if (($filters['visible_client_id'] ?? '') !== '') { $where[]='i.client_id = :visible_client_id'; $params['visible_client_id']=$filters['visible_client_id']; }
+        return $where ? ' WHERE ' . implode(' AND ', $where) : '';
     }
 }

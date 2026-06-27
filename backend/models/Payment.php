@@ -1,151 +1,22 @@
 <?php
 declare(strict_types=1);
 
-/**
- * Modèle pour les paiements.
- */
+require_once __DIR__ . '/BaseModel.php';
+
 class Payment extends BaseModel
 {
-    protected ?int $id = null;
-    protected ?int $invoiceId = null;
-    protected float $amount = 0.0;
-    protected string $currency = 'EUR';
-    protected ?string $paymentDate = null;
-    protected string $method = '';
-    protected ?string $reference = null;
-    protected ?string $createdAt = null;
-    protected ?string $updatedAt = null;
+    public const METHODS = ['ESPECES', 'VIREMENT', 'CHEQUE', 'WAVE', 'ORANGE_MONEY', 'AUTRE'];
 
-    public function __construct(PDO $db, array $data = [])
-    {
-        parent::__construct($db);
-        $this->hydrate($data);
-    }
-
-    public function hydrate(array $data): void
-    {
-        $this->id = isset($data['id']) ? (int) $data['id'] : null;
-        $this->invoiceId = isset($data['invoice_id']) ? (int) $data['invoice_id'] : (isset($data['invoiceId']) ? (int) $data['invoiceId'] : null);
-        $this->amount = isset($data['amount']) ? (float) $data['amount'] : 0.0;
-        $this->currency = $data['currency'] ?? 'EUR';
-        $this->paymentDate = $data['payment_date'] ?? $data['paymentDate'] ?? null;
-        $this->method = $data['method'] ?? '';
-        $this->reference = $data['reference'] ?? null;
-        $this->createdAt = $data['created_at'] ?? $data['createdAt'] ?? null;
-        $this->updatedAt = $data['updated_at'] ?? $data['updatedAt'] ?? null;
-    }
-
-    public function toArray(): array
-    {
-        return [
-            'id' => $this->id,
-            'invoice_id' => $this->invoiceId,
-            'amount' => $this->amount,
-            'currency' => $this->currency,
-            'payment_date' => $this->paymentDate,
-            'method' => $this->method,
-            'reference' => $this->reference,
-            'created_at' => $this->createdAt,
-            'updated_at' => $this->updatedAt,
-        ];
-    }
-
-    public function findById(int $id): ?array
-    {
-        return $this->fetchOne('SELECT * FROM `payments` WHERE `id` = :id', ['id' => $id]);
-    }
+    public function findById(int $id): ?array { return $this->fetchOne('SELECT * FROM payments WHERE id = :id', ['id'=>$id]); }
+    public function findByInvoice(int $invoiceId): array { return $this->fetchAll('SELECT p.*, u.full_name AS receiver_name FROM payments p INNER JOIN users u ON u.id = p.received_by WHERE p.invoice_id = :id ORDER BY p.payment_date DESC', ['id'=>$invoiceId]); }
+    public function getTotalByInvoice(int $invoiceId): float { $r=$this->fetchOne('SELECT COALESCE(SUM(amount),0) AS total FROM payments WHERE invoice_id = :id',['id'=>$invoiceId]); return $r ? (float)$r['total'] : 0.0; }
 
     public function findAll(array $filters = [], int $limit = 20, int $offset = 0): array
     {
-        $params = [];
-        $filterClause = $this->buildFilterClause($filters, $params);
-
-        $params['limit'] = $limit;
-        $params['offset'] = $offset;
-
-        return $this->fetchAll(
-            "SELECT * FROM `payments`{$filterClause} ORDER BY `id` ASC LIMIT :limit OFFSET :offset",
-            $params
-        );
+        $params=[]; $where=$this->where($filters,$params); $params['limit']=$limit; $params['offset']=$offset;
+        return $this->fetchAll("SELECT p.*, i.invoice_number, c.company_name, u.full_name AS receiver_name FROM payments p INNER JOIN invoices i ON i.id=p.invoice_id INNER JOIN clients c ON c.id=i.client_id INNER JOIN users u ON u.id=p.received_by {$where} ORDER BY p.payment_date DESC LIMIT :limit OFFSET :offset", $params);
     }
-
-    public function create(array $data): int
-    {
-        $insertData = [
-            'invoice_id' => $data['invoice_id'] ?? $data['invoiceId'] ?? null,
-            'amount' => isset($data['amount']) ? (float) $data['amount'] : 0.0,
-            'currency' => $data['currency'] ?? 'EUR',
-            'payment_date' => $data['payment_date'] ?? $data['paymentDate'] ?? null,
-            'method' => $data['method'] ?? '',
-            'reference' => $data['reference'] ?? null,
-        ];
-
-        return $this->insert('payments', $insertData);
-    }
-
-    public function update(int $id, array $data): bool
-    {
-        $updateData = [];
-
-        if (isset($data['invoice_id']) || isset($data['invoiceId'])) {
-            $updateData['invoice_id'] = $data['invoice_id'] ?? $data['invoiceId'];
-        }
-
-        if (isset($data['amount'])) {
-            $updateData['amount'] = (float) $data['amount'];
-        }
-
-        if (isset($data['currency'])) {
-            $updateData['currency'] = $data['currency'];
-        }
-
-        if (isset($data['payment_date']) || isset($data['paymentDate'])) {
-            $updateData['payment_date'] = $data['payment_date'] ?? $data['paymentDate'];
-        }
-
-        if (isset($data['method'])) {
-            $updateData['method'] = $data['method'];
-        }
-
-        if (array_key_exists('reference', $data)) {
-            $updateData['reference'] = $data['reference'];
-        }
-
-        if (empty($updateData)) {
-            return false;
-        }
-
-        return $this->updateRecord('payments', $id, $updateData);
-    }
-
-    public function delete(int $id): bool
-    {
-        return $this->deleteRecord('payments', $id);
-    }
-
-    public function findByInvoice(int $invoiceId): array
-    {
-        return $this->fetchAll('SELECT * FROM `payments` WHERE `invoice_id` = :invoice_id ORDER BY `id` ASC', ['invoice_id' => $invoiceId]);
-    }
-
-    public function getInvoice(): ?array
-    {
-        if ($this->invoiceId === null) {
-            return null;
-        }
-
-        return $this->fetchOne('SELECT * FROM `invoices` WHERE `id` = :id', ['id' => $this->invoiceId]);
-    }
-
-    public function getClient(): ?array
-    {
-        if ($this->invoiceId === null) {
-            return null;
-        }
-
-        return $this->fetchOne(
-            'SELECT c.* FROM `clients` c JOIN `invoices` i ON c.id = i.client_id WHERE i.id = :invoice_id',
-            ['invoice_id' => $this->invoiceId]
-        );
-    }
+    public function countAll(array $filters=[]): int { $params=[]; $where=$this->where($filters,$params); $r=$this->fetchOne("SELECT COUNT(*) AS total FROM payments p INNER JOIN invoices i ON i.id=p.invoice_id INNER JOIN clients c ON c.id=i.client_id {$where}",$params); return $r?(int)$r['total']:0; }
+    public function create(array $data): int { return $this->insert('payments',['invoice_id'=>(int)$data['invoice_id'],'payment_date'=>$data['payment_date'],'amount'=>(float)$data['amount'],'payment_method'=>$data['payment_method'],'reference_number'=>($data['reference_number']??'')===''?null:$data['reference_number'],'notes'=>($data['notes']??'')===''?null:$data['notes'],'received_by'=>(int)$data['received_by']]); }
+    private function where(array $filters, array &$params): string { $w=[]; foreach(['invoice_id','client_id','payment_method'] as $f){ if(($filters[$f]??'')!==''){ $col=$f==='client_id'?'i.client_id':"p.$f"; $w[]="$col = :$f"; $params[$f]=$filters[$f]; }} if(($filters['date_from']??'')!==''){ $w[]='p.payment_date >= :date_from'; $params['date_from']=$filters['date_from']; } if(($filters['date_to']??'')!==''){ $w[]='p.payment_date <= :date_to'; $params['date_to']=$filters['date_to']; } return $w?' WHERE '.implode(' AND ',$w):''; }
 }

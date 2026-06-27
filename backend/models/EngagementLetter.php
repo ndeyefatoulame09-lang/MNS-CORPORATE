@@ -1,128 +1,84 @@
 <?php
 declare(strict_types=1);
 
-/**
- * Modèle pour les lettres de mission.
- */
+require_once __DIR__ . '/BaseModel.php';
+
 class EngagementLetter extends BaseModel
 {
-    public const STATUS_PENDING = 'pending';
-    public const STATUS_SIGNED = 'signed';
-
-    protected ?int $id = null;
-    protected ?int $clientId = null;
-    protected ?int $missionId = null;
-    protected string $status = self::STATUS_PENDING;
-    protected string $documentPath = '';
-    protected ?string $signedAt = null;
-    protected ?string $createdAt = null;
-    protected ?string $updatedAt = null;
-
-    public function __construct(PDO $db, array $data = [])
-    {
-        parent::__construct($db);
-        $this->hydrate($data);
-    }
-
-    public function hydrate(array $data): void
-    {
-        $this->id = isset($data['id']) ? (int) $data['id'] : null;
-        $this->clientId = isset($data['client_id']) ? (int) $data['client_id'] : (isset($data['clientId']) ? (int) $data['clientId'] : null);
-        $this->missionId = isset($data['mission_id']) ? (int) $data['mission_id'] : (isset($data['missionId']) ? (int) $data['missionId'] : null);
-        $this->status = $data['status'] ?? self::STATUS_PENDING;
-        $this->documentPath = $data['document_path'] ?? $data['documentPath'] ?? '';
-        $this->signedAt = $data['signed_at'] ?? $data['signedAt'] ?? null;
-        $this->createdAt = $data['created_at'] ?? $data['createdAt'] ?? null;
-        $this->updatedAt = $data['updated_at'] ?? $data['updatedAt'] ?? null;
-    }
-
-    public function toArray(): array
-    {
-        return [
-            'id' => $this->id,
-            'client_id' => $this->clientId,
-            'mission_id' => $this->missionId,
-            'status' => $this->status,
-            'document_path' => $this->documentPath,
-            'signed_at' => $this->signedAt,
-            'created_at' => $this->createdAt,
-            'updated_at' => $this->updatedAt,
-        ];
-    }
+    public const STATUSES = ['BROUILLON', 'ENVOYEE', 'SIGNEE'];
 
     public function findById(int $id): ?array
     {
-        return $this->fetchOne('SELECT * FROM `engagement_letters` WHERE `id` = :id', ['id' => $id]);
+        return $this->fetchOne(
+            'SELECT el.*, c.company_name, m.title AS mission_title, u.full_name AS creator_name
+             FROM engagement_letters el
+             INNER JOIN clients c ON c.id = el.client_id
+             LEFT JOIN missions m ON m.id = el.mission_id
+             INNER JOIN users u ON u.id = el.created_by
+             WHERE el.id = :id',
+            ['id'=>$id]
+        );
     }
 
-    public function findAll(array $filters = [], int $limit = 20, int $offset = 0): array
+    public function findAll(array $filters=[], int $limit=20, int $offset=0): array
     {
-        $params = [];
-        $filterClause = $this->buildFilterClause($filters, $params);
+        $params=[]; $where=$this->where($filters,$params); $params['limit']=$limit; $params['offset']=$offset;
+        return $this->fetchAll("SELECT el.*, c.company_name, m.title AS mission_title FROM engagement_letters el INNER JOIN clients c ON c.id=el.client_id LEFT JOIN missions m ON m.id=el.mission_id {$where} ORDER BY el.created_at DESC LIMIT :limit OFFSET :offset",$params);
+    }
 
-        $params['limit'] = $limit;
-        $params['offset'] = $offset;
-
-        return $this->fetchAll(
-            "SELECT * FROM `engagement_letters`{$filterClause} ORDER BY `id` ASC LIMIT :limit OFFSET :offset",
-            $params
-        );
+    public function countAll(array $filters=[]): int
+    {
+        $params=[]; $where=$this->where($filters,$params); $r=$this->fetchOne("SELECT COUNT(*) AS total FROM engagement_letters el INNER JOIN clients c ON c.id=el.client_id LEFT JOIN missions m ON m.id=el.mission_id {$where}",$params);
+        return $r?(int)$r['total']:0;
     }
 
     public function create(array $data): int
     {
-        $insertData = [
-            'client_id' => $data['client_id'] ?? $data['clientId'] ?? null,
-            'mission_id' => $data['mission_id'] ?? $data['missionId'] ?? null,
-            'status' => $data['status'] ?? self::STATUS_PENDING,
-            'document_path' => $data['document_path'] ?? $data['documentPath'] ?? '',
-            'signed_at' => $data['signed_at'] ?? $data['signedAt'] ?? null,
-        ];
-
-        return $this->insert('engagement_letters', $insertData);
+        return $this->insert('engagement_letters', [
+            'client_id'=>(int)$data['client_id'],
+            'mission_id'=>($data['mission_id']??'')===''?null:(int)$data['mission_id'],
+            'title'=>$data['title'],
+            'file_path'=>$data['file_path']??null,
+            'status'=>'BROUILLON',
+            'created_by'=>(int)$data['created_by'],
+        ]);
     }
 
     public function update(int $id, array $data): bool
     {
-        $updateData = [];
-
-        if (isset($data['client_id']) || isset($data['clientId'])) {
-            $updateData['client_id'] = $data['client_id'] ?? $data['clientId'];
-        }
-
-        if (isset($data['mission_id']) || isset($data['missionId'])) {
-            $updateData['mission_id'] = $data['mission_id'] ?? $data['missionId'];
-        }
-
-        if (isset($data['status'])) {
-            $updateData['status'] = $data['status'];
-        }
-
-        if (isset($data['document_path']) || isset($data['documentPath'])) {
-            $updateData['document_path'] = $data['document_path'] ?? $data['documentPath'];
-        }
-
-        if (isset($data['signed_at']) || isset($data['signedAt'])) {
-            $updateData['signed_at'] = $data['signed_at'] ?? $data['signedAt'];
-        }
-
-        if (empty($updateData)) {
-            return false;
-        }
-
-        return $this->updateRecord('engagement_letters', $id, $updateData);
-    }
-
-    public function delete(int $id): bool
-    {
-        return $this->deleteRecord('engagement_letters', $id);
-    }
-
-    public function markAsSigned(int $id): bool
-    {
-        return $this->updateRecord('engagement_letters', $id, [
-            'status' => self::STATUS_SIGNED,
-            'signed_at' => date('Y-m-d H:i:s'),
+        return $this->updateRecord('engagement_letters',$id,[
+            'client_id'=>(int)$data['client_id'],
+            'mission_id'=>($data['mission_id']??'')===''?null:(int)$data['mission_id'],
+            'title'=>$data['title'],
+            'file_path'=>$data['file_path']??null,
+            'status'=>$data['status']??'BROUILLON',
+            'sent_at'=>null,
+            'signed_at'=>null,
+            'signed_by_name'=>null,
+            'signature_text'=>null,
         ]);
+    }
+
+    public function markAsSent(int $id): bool { return $this->updateRecord('engagement_letters',$id,['status'=>'ENVOYEE','sent_at'=>date('Y-m-d H:i:s')]); }
+    public function sign(int $id, string $name, string $text): bool { return $this->updateRecord('engagement_letters',$id,['status'=>'SIGNEE','signed_at'=>date('Y-m-d H:i:s'),'signed_by_name'=>$name,'signature_text'=>$text]); }
+    public function findByClient(int $clientId): array { return $this->findAll(['client_id'=>$clientId],100,0); }
+
+    public function canUserAccessLetter(array $user, array $letter): bool
+    {
+        if (($user['role']??'') === 'EXPERT') { return true; }
+        if (($user['role']??'') === 'CLIENT') {
+            $client = $this->fetchOne('SELECT id FROM clients WHERE user_id = :user_id', ['user_id'=>(int)$user['id']]);
+            return $client && (int)$client['id'] === (int)$letter['client_id'];
+        }
+        return false;
+    }
+
+    private function where(array $filters, array &$params): string
+    {
+        $w=[];
+        if(($filters['q']??'')!==''){ $w[]='el.title LIKE :q'; $params['q']='%'.$filters['q'].'%'; }
+        foreach(['client_id','mission_id','status'] as $f){ if(($filters[$f]??'')!==''){ $w[]="el.$f = :$f"; $params[$f]=$filters[$f]; }}
+        if(($filters['visible_client_id']??'')!==''){ $w[]='el.client_id = :visible_client_id'; $params['visible_client_id']=$filters['visible_client_id']; }
+        return $w?' WHERE '.implode(' AND ',$w):'';
     }
 }
