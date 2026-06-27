@@ -1,161 +1,177 @@
 <?php
 declare(strict_types=1);
 
-/**
- * Modèle pour les échéances fiscales.
- */
+require_once __DIR__ . '/BaseModel.php';
+require_once __DIR__ . '/../config/accounting_rules.php';
+
 class FiscalDeadline extends BaseModel
 {
-    public const STATUS_PENDING = 'pending';
-    public const STATUS_COMPLETED = 'completed';
-
-    protected ?int $id = null;
-    protected ?int $clientId = null;
-    protected string $title = '';
-    protected string $description = '';
-    protected string $status = self::STATUS_PENDING;
-    protected ?string $dueDate = null;
-    protected ?bool $isCompleted = null;
-    protected ?string $completedAt = null;
-    protected ?string $createdAt = null;
-    protected ?string $updatedAt = null;
-
-    public function __construct(PDO $db, array $data = [])
-    {
-        parent::__construct($db);
-        $this->hydrate($data);
-    }
-
-    public function hydrate(array $data): void
-    {
-        $this->id = isset($data['id']) ? (int) $data['id'] : null;
-        $this->clientId = isset($data['client_id']) ? (int) $data['client_id'] : (isset($data['clientId']) ? (int) $data['clientId'] : null);
-        $this->title = $data['title'] ?? '';
-        $this->description = $data['description'] ?? '';
-        $this->status = $data['status'] ?? self::STATUS_PENDING;
-        $this->dueDate = $data['due_date'] ?? $data['dueDate'] ?? null;
-        $this->isCompleted = isset($data['is_completed']) ? (bool) $data['is_completed'] : (isset($data['isCompleted']) ? (bool) $data['isCompleted'] : null);
-        $this->completedAt = $data['completed_at'] ?? $data['completedAt'] ?? null;
-        $this->createdAt = $data['created_at'] ?? $data['createdAt'] ?? null;
-        $this->updatedAt = $data['updated_at'] ?? $data['updatedAt'] ?? null;
-    }
-
-    public function toArray(): array
-    {
-        return [
-            'id' => $this->id,
-            'client_id' => $this->clientId,
-            'title' => $this->title,
-            'description' => $this->description,
-            'status' => $this->status,
-            'due_date' => $this->dueDate,
-            'is_completed' => $this->isCompleted,
-            'completed_at' => $this->completedAt,
-            'created_at' => $this->createdAt,
-            'updated_at' => $this->updatedAt,
-        ];
-    }
+    public const STATUSES = ['A_VENIR', 'TERMINEE', 'EN_RETARD'];
 
     public function findById(int $id): ?array
     {
-        return $this->fetchOne('SELECT * FROM `fiscal_deadlines` WHERE `id` = :id', ['id' => $id]);
+        return $this->fetchOne(
+            'SELECT fd.*, c.company_name, m.title AS mission_title
+             FROM fiscal_deadlines fd
+             INNER JOIN clients c ON c.id = fd.client_id
+             LEFT JOIN missions m ON m.id = fd.mission_id
+             WHERE fd.id = :id',
+            ['id' => $id]
+        );
     }
 
     public function findAll(array $filters = [], int $limit = 20, int $offset = 0): array
     {
         $params = [];
-        $filterClause = $this->buildFilterClause($filters, $params);
-
+        $where = $this->where($filters, $params);
         $params['limit'] = $limit;
         $params['offset'] = $offset;
-
         return $this->fetchAll(
-            "SELECT * FROM `fiscal_deadlines`{$filterClause} ORDER BY `due_date` ASC LIMIT :limit OFFSET :offset",
+            "SELECT fd.*, c.company_name, m.title AS mission_title
+             FROM fiscal_deadlines fd
+             INNER JOIN clients c ON c.id = fd.client_id
+             LEFT JOIN missions m ON m.id = fd.mission_id
+             {$where}
+             ORDER BY fd.deadline_date ASC, fd.id ASC LIMIT :limit OFFSET :offset",
             $params
         );
     }
 
+    public function countAll(array $filters = []): int
+    {
+        $params = [];
+        $where = $this->where($filters, $params);
+        $row = $this->fetchOne(
+            "SELECT COUNT(*) AS total FROM fiscal_deadlines fd
+             INNER JOIN clients c ON c.id = fd.client_id
+             LEFT JOIN missions m ON m.id = fd.mission_id {$where}",
+            $params
+        );
+        return $row === null ? 0 : (int) $row['total'];
+    }
+
     public function create(array $data): int
     {
-        $insertData = [
-            'client_id' => $data['client_id'] ?? $data['clientId'] ?? null,
+        return $this->insert('fiscal_deadlines', [
+            'client_id' => (int) $data['client_id'],
+            'mission_id' => ($data['mission_id'] ?? '') === '' ? null : (int) $data['mission_id'],
             'title' => $data['title'] ?? '',
-            'description' => $data['description'] ?? '',
-            'status' => $data['status'] ?? self::STATUS_PENDING,
-            'due_date' => $data['due_date'] ?? $data['dueDate'] ?? null,
-            'is_completed' => isset($data['is_completed']) ? (bool) $data['is_completed'] : (isset($data['isCompleted']) ? (bool) $data['isCompleted'] : false),
-            'completed_at' => $data['completed_at'] ?? $data['completedAt'] ?? null,
-        ];
-
-        return $this->insert('fiscal_deadlines', $insertData);
+            'description' => ($data['description'] ?? '') === '' ? null : $data['description'],
+            'deadline_date' => $data['deadline_date'] ?? null,
+            'status' => $data['status'] ?? 'A_VENIR',
+            'completed_at' => ($data['completed_at'] ?? '') === '' ? null : $data['completed_at'],
+        ]);
     }
 
     public function update(int $id, array $data): bool
     {
-        $updateData = [];
-
-        if (isset($data['client_id']) || isset($data['clientId'])) {
-            $updateData['client_id'] = $data['client_id'] ?? $data['clientId'];
-        }
-
-        if (isset($data['title'])) {
-            $updateData['title'] = $data['title'];
-        }
-
-        if (isset($data['description'])) {
-            $updateData['description'] = $data['description'];
-        }
-
-        if (isset($data['status'])) {
-            $updateData['status'] = $data['status'];
-        }
-
-        if (isset($data['due_date']) || isset($data['dueDate'])) {
-            $updateData['due_date'] = $data['due_date'] ?? $data['dueDate'];
-        }
-
-        if (array_key_exists('is_completed', $data) || array_key_exists('isCompleted', $data)) {
-            $updateData['is_completed'] = isset($data['is_completed']) ? (bool) $data['is_completed'] : (isset($data['isCompleted']) ? (bool) $data['isCompleted'] : null);
-        }
-
-        if (isset($data['completed_at']) || isset($data['completedAt'])) {
-            $updateData['completed_at'] = $data['completed_at'] ?? $data['completedAt'];
-        }
-
-        if (empty($updateData)) {
-            return false;
-        }
-
-        return $this->updateRecord('fiscal_deadlines', $id, $updateData);
-    }
-
-    public function delete(int $id): bool
-    {
-        return $this->deleteRecord('fiscal_deadlines', $id);
-    }
-
-    public function findUpcoming(int $limit = 20): array
-    {
-        return $this->fetchAll(
-            'SELECT * FROM `fiscal_deadlines` WHERE `due_date` > NOW() AND `status` = :status ORDER BY `due_date` ASC LIMIT :limit',
-            ['status' => self::STATUS_PENDING, 'limit' => $limit]
-        );
-    }
-
-    public function findOverdue(int $limit = 20): array
-    {
-        return $this->fetchAll(
-            'SELECT * FROM `fiscal_deadlines` WHERE `due_date` < NOW() AND `status` != :status ORDER BY `due_date` ASC LIMIT :limit',
-            ['status' => self::STATUS_COMPLETED, 'limit' => $limit]
-        );
+        return $this->updateRecord('fiscal_deadlines', $id, [
+            'client_id' => (int) $data['client_id'],
+            'mission_id' => ($data['mission_id'] ?? '') === '' ? null : (int) $data['mission_id'],
+            'title' => $data['title'] ?? '',
+            'description' => ($data['description'] ?? '') === '' ? null : $data['description'],
+            'deadline_date' => $data['deadline_date'] ?? null,
+            'status' => $data['status'] ?? 'A_VENIR',
+            'completed_at' => ($data['completed_at'] ?? '') === '' ? null : $data['completed_at'],
+        ]);
     }
 
     public function markAsCompleted(int $id): bool
     {
         return $this->updateRecord('fiscal_deadlines', $id, [
-            'status' => self::STATUS_COMPLETED,
-            'is_completed' => true,
+            'status' => 'TERMINEE',
             'completed_at' => date('Y-m-d H:i:s'),
         ]);
+    }
+
+    public function markAsOverdue(): int
+    {
+        $stmt = $this->db->prepare("UPDATE fiscal_deadlines SET status = 'EN_RETARD' WHERE deadline_date < CURDATE() AND status <> 'TERMINEE'");
+        $stmt->execute();
+        return $stmt->rowCount();
+    }
+
+    public function generateMonthlyVatDeadlines(int $year): int
+    {
+        $clients = $this->fetchAll("SELECT id, company_name FROM clients WHERE status = 'ACTIF'");
+        $created = 0;
+        foreach ($clients as $client) {
+            for ($month = 1; $month <= 12; $month++) {
+                $date = sprintf('%04d-%02d-%02d', $year, $month, TVA_DEADLINE_DAY);
+                $title = 'Declaration TVA ' . sprintf('%02d/%04d', $month, $year);
+                if (!$this->existsForClientAndDate((int) $client['id'], $date, $title)) {
+                    $this->create([
+                        'client_id' => $client['id'],
+                        'title' => $title,
+                        'description' => 'Echeance mensuelle de declaration TVA.',
+                        'deadline_date' => $date,
+                        'status' => 'A_VENIR',
+                    ]);
+                    $created++;
+                }
+            }
+        }
+        return $created;
+    }
+
+    public function generateAnnualIsDeadlines(int $year): int
+    {
+        $clients = $this->fetchAll("SELECT id FROM clients WHERE status = 'ACTIF'");
+        $created = 0;
+        $date = sprintf('%04d-%02d-%02d', $year, IS_DEADLINE_MONTH, IS_DEADLINE_DAY);
+        foreach ($clients as $client) {
+            $title = 'Declaration IS ' . $year;
+            if (!$this->existsForClientAndDate((int) $client['id'], $date, $title)) {
+                $this->create([
+                    'client_id' => $client['id'],
+                    'title' => $title,
+                    'description' => 'Echeance annuelle de declaration de l impot sur les societes.',
+                    'deadline_date' => $date,
+                    'status' => 'A_VENIR',
+                ]);
+                $created++;
+            }
+        }
+        return $created;
+    }
+
+    public function existsForClientAndDate(int $clientId, string $date, string $title): bool
+    {
+        return $this->fetchOne(
+            'SELECT id FROM fiscal_deadlines WHERE client_id = :client_id AND deadline_date = :deadline_date AND title = :title',
+            ['client_id' => $clientId, 'deadline_date' => $date, 'title' => $title]
+        ) !== null;
+    }
+
+    private function where(array $filters, array &$params): string
+    {
+        $where = [];
+        if (($filters['q'] ?? '') !== '') {
+            $where[] = '(fd.title LIKE :q OR fd.description LIKE :q)';
+            $params['q'] = '%' . $filters['q'] . '%';
+        }
+        foreach (['client_id', 'mission_id', 'status'] as $field) {
+            if (($filters[$field] ?? '') !== '') {
+                $where[] = "fd.{$field} = :{$field}";
+                $params[$field] = $filters[$field];
+            }
+        }
+        if (($filters['date_from'] ?? '') !== '') {
+            $where[] = 'fd.deadline_date >= :date_from';
+            $params['date_from'] = $filters['date_from'];
+        }
+        if (($filters['date_to'] ?? '') !== '') {
+            $where[] = 'fd.deadline_date <= :date_to';
+            $params['date_to'] = $filters['date_to'];
+        }
+        if (($filters['visible_client_id'] ?? '') !== '') {
+            $where[] = 'fd.client_id = :visible_client_id';
+            $params['visible_client_id'] = $filters['visible_client_id'];
+        }
+        if (($filters['assigned_user_id'] ?? '') !== '') {
+            $where[] = 'fd.mission_id IN (SELECT mission_id FROM mission_assignments WHERE user_id = :assigned_user_id)';
+            $params['assigned_user_id'] = $filters['assigned_user_id'];
+        }
+        return $where ? ' WHERE ' . implode(' AND ', $where) : '';
     }
 }

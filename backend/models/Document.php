@@ -1,153 +1,142 @@
 <?php
 declare(strict_types=1);
 
-/**
- * Modèle pour les documents.
- */
+require_once __DIR__ . '/BaseModel.php';
+
 class Document extends BaseModel
 {
-    protected ?int $id = null;
-    protected ?int $clientId = null;
-    protected ?int $missionId = null;
-    protected string $title = '';
-    protected string $filePath = '';
-    protected string $fileType = '';
-    protected ?string $uploadedAt = null;
-    protected ?string $createdAt = null;
-    protected ?string $updatedAt = null;
-
-    public function __construct(PDO $db, array $data = [])
-    {
-        parent::__construct($db);
-        $this->hydrate($data);
-    }
-
-    public function hydrate(array $data): void
-    {
-        $this->id = isset($data['id']) ? (int) $data['id'] : null;
-        $this->clientId = isset($data['client_id']) ? (int) $data['client_id'] : (isset($data['clientId']) ? (int) $data['clientId'] : null);
-        $this->missionId = isset($data['mission_id']) ? (int) $data['mission_id'] : (isset($data['missionId']) ? (int) $data['missionId'] : null);
-        $this->title = $data['title'] ?? '';
-        $this->filePath = $data['file_path'] ?? $data['filePath'] ?? '';
-        $this->fileType = $data['file_type'] ?? $data['fileType'] ?? '';
-        $this->uploadedAt = $data['uploaded_at'] ?? $data['uploadedAt'] ?? null;
-        $this->createdAt = $data['created_at'] ?? $data['createdAt'] ?? null;
-        $this->updatedAt = $data['updated_at'] ?? $data['updatedAt'] ?? null;
-    }
-
-    public function toArray(): array
-    {
-        return [
-            'id' => $this->id,
-            'client_id' => $this->clientId,
-            'mission_id' => $this->missionId,
-            'title' => $this->title,
-            'file_path' => $this->filePath,
-            'file_type' => $this->fileType,
-            'uploaded_at' => $this->uploadedAt,
-            'created_at' => $this->createdAt,
-            'updated_at' => $this->updatedAt,
-        ];
-    }
+    public const STATUSES = ['NOUVEAU', 'CONSULTE', 'VALIDE', 'REJETE'];
+    public const CATEGORIES = ['FACTURE', 'RELEVE_BANCAIRE', 'CONTRAT', 'DECLARATION', 'AUTRE'];
 
     public function findById(int $id): ?array
     {
-        return $this->fetchOne('SELECT * FROM `documents` WHERE `id` = :id', ['id' => $id]);
+        return $this->fetchOne('SELECT * FROM documents WHERE id = :id', ['id' => $id]);
+    }
+
+    public function getDocumentWithRelations(int $id): ?array
+    {
+        return $this->fetchOne(
+            'SELECT d.*, c.company_name, m.title AS mission_title, u.full_name AS uploader_name
+             FROM documents d
+             INNER JOIN clients c ON c.id = d.client_id
+             LEFT JOIN missions m ON m.id = d.mission_id
+             INNER JOIN users u ON u.id = d.uploaded_by
+             WHERE d.id = :id',
+            ['id' => $id]
+        );
     }
 
     public function findAll(array $filters = [], int $limit = 20, int $offset = 0): array
     {
         $params = [];
-        $filterClause = $this->buildFilterClause($filters, $params);
-
+        $where = $this->where($filters, $params);
         $params['limit'] = $limit;
         $params['offset'] = $offset;
-
         return $this->fetchAll(
-            "SELECT * FROM `documents`{$filterClause} ORDER BY `id` ASC LIMIT :limit OFFSET :offset",
+            "SELECT d.*, c.company_name, m.title AS mission_title, u.full_name AS uploader_name
+             FROM documents d
+             INNER JOIN clients c ON c.id = d.client_id
+             LEFT JOIN missions m ON m.id = d.mission_id
+             INNER JOIN users u ON u.id = d.uploaded_by
+             {$where}
+             ORDER BY d.uploaded_at DESC LIMIT :limit OFFSET :offset",
             $params
         );
     }
 
+    public function countAll(array $filters = []): int
+    {
+        $params = [];
+        $where = $this->where($filters, $params);
+        $row = $this->fetchOne(
+            "SELECT COUNT(*) AS total FROM documents d
+             INNER JOIN clients c ON c.id = d.client_id
+             LEFT JOIN missions m ON m.id = d.mission_id {$where}",
+            $params
+        );
+        return $row === null ? 0 : (int) $row['total'];
+    }
+
     public function create(array $data): int
     {
-        $insertData = [
-            'client_id' => $data['client_id'] ?? $data['clientId'] ?? null,
-            'mission_id' => $data['mission_id'] ?? $data['missionId'] ?? null,
+        return $this->insert('documents', [
+            'client_id' => (int) $data['client_id'],
+            'mission_id' => ($data['mission_id'] ?? '') === '' ? null : (int) $data['mission_id'],
+            'uploaded_by' => (int) $data['uploaded_by'],
             'title' => $data['title'] ?? '',
-            'file_path' => $data['file_path'] ?? $data['filePath'] ?? '',
-            'file_type' => $data['file_type'] ?? $data['fileType'] ?? '',
-            'uploaded_at' => $data['uploaded_at'] ?? $data['uploadedAt'] ?? null,
-        ];
-
-        return $this->insert('documents', $insertData);
+            'original_filename' => $data['original_filename'] ?? '',
+            'stored_filename' => $data['stored_filename'] ?? '',
+            'file_path' => $data['file_path'] ?? '',
+            'file_type' => $data['file_type'] ?? null,
+            'file_size' => $data['file_size'] ?? null,
+            'document_category' => $data['document_category'] ?? 'AUTRE',
+            'status' => $data['status'] ?? 'NOUVEAU',
+        ]);
     }
 
-    public function update(int $id, array $data): bool
+    public function updateStatus(int $id, string $status): bool
     {
-        $updateData = [];
-
-        if (isset($data['client_id']) || isset($data['clientId'])) {
-            $updateData['client_id'] = $data['client_id'] ?? $data['clientId'];
-        }
-
-        if (isset($data['mission_id']) || isset($data['missionId'])) {
-            $updateData['mission_id'] = $data['mission_id'] ?? $data['missionId'];
-        }
-
-        if (isset($data['title'])) {
-            $updateData['title'] = $data['title'];
-        }
-
-        if (isset($data['file_path']) || isset($data['filePath'])) {
-            $updateData['file_path'] = $data['file_path'] ?? $data['filePath'];
-        }
-
-        if (isset($data['file_type']) || isset($data['fileType'])) {
-            $updateData['file_type'] = $data['file_type'] ?? $data['fileType'];
-        }
-
-        if (isset($data['uploaded_at']) || isset($data['uploadedAt'])) {
-            $updateData['uploaded_at'] = $data['uploaded_at'] ?? $data['uploadedAt'];
-        }
-
-        if (empty($updateData)) {
-            return false;
-        }
-
-        return $this->updateRecord('documents', $id, $updateData);
-    }
-
-    public function delete(int $id): bool
-    {
-        return $this->deleteRecord('documents', $id);
+        return $this->updateRecord('documents', $id, ['status' => $status]);
     }
 
     public function findByClient(int $clientId): array
     {
-        return $this->fetchAll('SELECT * FROM `documents` WHERE `client_id` = :client_id ORDER BY `id` ASC', ['client_id' => $clientId]);
+        return $this->findAll(['client_id' => $clientId], 100, 0);
     }
 
     public function findByMission(int $missionId): array
     {
-        return $this->fetchAll('SELECT * FROM `documents` WHERE `mission_id` = :mission_id ORDER BY `id` ASC', ['mission_id' => $missionId]);
+        return $this->findAll(['mission_id' => $missionId], 100, 0);
     }
 
-    public function getClient(): ?array
+    public function findAccessibleByUser(array $user, array $filters = [], int $limit = 20, int $offset = 0): array
     {
-        if ($this->clientId === null) {
-            return null;
-        }
-
-        return $this->fetchOne('SELECT * FROM `clients` WHERE `id` = :id', ['id' => $this->clientId]);
+        return $this->findAll($this->applyAccessFilters($user, $filters), $limit, $offset);
     }
 
-    public function getMission(): ?array
+    public function countAccessibleByUser(array $user, array $filters = []): int
     {
-        if ($this->missionId === null) {
-            return null;
-        }
+        return $this->countAll($this->applyAccessFilters($user, $filters));
+    }
 
-        return $this->fetchOne('SELECT * FROM `missions` WHERE `id` = :id', ['id' => $this->missionId]);
+    public function canAccess(array $user, int $documentId): bool
+    {
+        $filters = $this->applyAccessFilters($user, ['document_id' => $documentId]);
+        return $this->countAll($filters) > 0;
+    }
+
+    private function applyAccessFilters(array $user, array $filters): array
+    {
+        if (($user['role'] ?? '') === 'CLIENT') {
+            $client = $this->fetchOne('SELECT id FROM clients WHERE user_id = :user_id', ['user_id' => (int) $user['id']]);
+            $filters['client_id'] = $client['id'] ?? 0;
+        } elseif (in_array(($user['role'] ?? ''), ['COLLABORATEUR', 'STAGIAIRE'], true)) {
+            $filters['assigned_user_id'] = (int) $user['id'];
+        }
+        return $filters;
+    }
+
+    private function where(array $filters, array &$params): string
+    {
+        $where = [];
+        if (($filters['q'] ?? '') !== '') {
+            $where[] = '(d.title LIKE :q OR d.original_filename LIKE :q)';
+            $params['q'] = '%' . $filters['q'] . '%';
+        }
+        if (($filters['document_id'] ?? '') !== '') {
+            $where[] = 'd.id = :document_id';
+            $params['document_id'] = $filters['document_id'];
+        }
+        foreach (['client_id', 'mission_id', 'status', 'document_category'] as $field) {
+            if (($filters[$field] ?? '') !== '') {
+                $where[] = "d.{$field} = :{$field}";
+                $params[$field] = $filters[$field];
+            }
+        }
+        if (($filters['assigned_user_id'] ?? '') !== '') {
+            $where[] = 'd.mission_id IN (SELECT mission_id FROM mission_assignments WHERE user_id = :assigned_user_id)';
+            $params['assigned_user_id'] = $filters['assigned_user_id'];
+        }
+        return $where ? ' WHERE ' . implode(' AND ', $where) : '';
     }
 }

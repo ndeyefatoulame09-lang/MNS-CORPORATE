@@ -1,0 +1,1 @@
+<?php declare(strict_types=1); if(!defined('MNS_CONTROLLER_RENDER')){require_once __DIR__.'/../../../backend/controllers/deadline_controller.php'; $_GET['action']='calendar'; handleDeadlineRequest(); return;} require __DIR__.'/list.php';

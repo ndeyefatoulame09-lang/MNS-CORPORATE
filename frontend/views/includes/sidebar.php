@@ -18,6 +18,8 @@ $user = currentUser();
 				<li class="nav-item mb-2"><a class="nav-link" href="/MNS_CORPORATE/frontend/views/missions/list.php">Missions</a></li>
 				<li class="nav-item mb-2"><a class="nav-link" href="/MNS_CORPORATE/frontend/views/missions/catalog_list.php">Catalogue missions</a></li>
 			<?php endif; ?>
+			<li class="nav-item mb-2"><a class="nav-link" href="/MNS_CORPORATE/frontend/views/deadlines/list.php">Echeances fiscales</a></li>
+			<li class="nav-item mb-2"><a class="nav-link" href="/MNS_CORPORATE/frontend/views/documents/list.php">Documents</a></li>
 		</ul>
 	<?php else: ?>
 		<div class="text-muted">Connectez-vous pour voir le menu</div>

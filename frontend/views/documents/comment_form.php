@@ -1,0 +1,2 @@
+<?php require_once __DIR__ . '/../../../backend/includes/helpers.php'; ?>
+<form method="post" action="/MNS_CORPORATE/frontend/views/documents/show.php?action=comment" class="mt-3"><input type="hidden" name="document_id" value="<?php echo e((string)$document['id']); ?>"><label class="form-label">Commentaire</label><textarea class="form-control" name="message" rows="3" required></textarea><button class="btn btn-outline-primary mt-2">Ajouter</button></form>
