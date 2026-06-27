@@ -96,7 +96,7 @@ function downloadDocument(int $id): void
     $pdo = getDatabaseConnection();
     $model = new Document($pdo);
     $user = currentUser();
-    if (!$model->canAccess($user, $id)) { http_response_code(403); exit('Acces refuse'); }
+    if (!$model->canAccess($user, $id)) { setFlashMessage('error', 'Document inaccessible.'); redirect('/MNS_CORPORATE/index.php'); }
     $document = $model->getDocumentWithRelations($id);
     if ($document === null) { http_response_code(404); exit('Introuvable'); }
     $path = __DIR__ . '/../../' . $document['file_path'];

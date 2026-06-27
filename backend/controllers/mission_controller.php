@@ -16,7 +16,7 @@ const CATALOG_LIST_URL = '/MNS_CORPORATE/frontend/views/missions/catalog_list.ph
 function handleMissionsRequest(): void
 {
     startSecureSession();
-    requireRole(['EXPERT']);
+    requireAuth();
 
     $action = $_GET['action'] ?? 'list';
 
@@ -62,9 +62,19 @@ function handleMissionCatalogRequest(): void
 function listMissions(): void
 {
     startSecureSession();
-    requireRole(['EXPERT']);
+    requireAuth();
     $model = new Mission(getDatabaseConnection());
     $filters = missionFiltersFromQuery();
+    $user = currentUser();
+    if (in_array(($user['role'] ?? ''), ['COLLABORATEUR', 'STAGIAIRE'], true)) {
+        $filters['assigned_user_id'] = (int) $user['id'];
+    } elseif (($user['role'] ?? '') === 'CLIENT') {
+        $client = missionClientForUser(getDatabaseConnection(), (int) $user['id']);
+        $filters['visible_client_id'] = $client['id'] ?? 0;
+    } elseif (($user['role'] ?? '') !== 'EXPERT') {
+        setFlashMessage('error', 'Vous n’avez pas les droits pour accéder à cette page.');
+        redirect('/MNS_CORPORATE/index.php');
+    }
     $page = max(1, (int) ($_GET['page'] ?? 1));
     $perPage = 20;
     $missions = $model->findAll($filters, $perPage, ($page - 1) * $perPage);
@@ -154,8 +164,12 @@ function updateMission(int $id): void
 function showMission(int $id): void
 {
     startSecureSession();
-    requireRole(['EXPERT']);
+    requireAuth();
     $mission = findMissionOrRedirect($id);
+    if (!missionCanAccess($mission)) {
+        setFlashMessage('error', 'Mission inaccessible.');
+        redirect('/MNS_CORPORATE/index.php');
+    }
 
     renderMissionView('show.php', compact('mission'));
 }
@@ -431,6 +445,36 @@ function findCatalogItemOrRedirect(int $id): array
     }
 
     return $catalogItem;
+}
+
+function missionClientForUser(PDO $pdo, int $userId): ?array
+{
+    $stmt = $pdo->prepare('SELECT id FROM clients WHERE user_id = :user_id');
+    $stmt->execute(['user_id' => $userId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row === false ? null : $row;
+}
+
+function missionCanAccess(array $mission): bool
+{
+    $user = currentUser();
+    if (($user['role'] ?? '') === 'EXPERT') {
+        return true;
+    }
+
+    $pdo = getDatabaseConnection();
+    if (in_array(($user['role'] ?? ''), ['COLLABORATEUR', 'STAGIAIRE'], true)) {
+        $stmt = $pdo->prepare('SELECT id FROM mission_assignments WHERE mission_id = :mission_id AND user_id = :user_id');
+        $stmt->execute(['mission_id' => (int) $mission['id'], 'user_id' => (int) $user['id']]);
+        return $stmt->fetch(PDO::FETCH_ASSOC) !== false;
+    }
+
+    if (($user['role'] ?? '') === 'CLIENT') {
+        $client = missionClientForUser($pdo, (int) $user['id']);
+        return $client !== null && (int) $client['id'] === (int) $mission['client_id'];
+    }
+
+    return false;
 }
 
 function renderMissionView(string $view, array $vars = []): void

@@ -9,7 +9,8 @@ startSecureSession();
 $user = currentUser();
 
 if ($user !== null) {
-    require_once __DIR__ . '/frontend/views/dashboard/dashboard_view.php';
+    require_once __DIR__ . '/backend/controllers/dashboard_controller.php';
+    handleDashboardRequest();
     return;
 }
 

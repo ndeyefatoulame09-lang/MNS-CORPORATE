@@ -157,6 +157,16 @@ class Mission extends BaseModel
             $params['start_to'] = $filters['start_to'];
         }
 
+        if (($filters['assigned_user_id'] ?? '') !== '') {
+            $where[] = 'EXISTS (SELECT 1 FROM mission_assignments ma WHERE ma.mission_id = m.id AND ma.user_id = :assigned_user_id)';
+            $params['assigned_user_id'] = $filters['assigned_user_id'];
+        }
+
+        if (($filters['visible_client_id'] ?? '') !== '') {
+            $where[] = 'm.client_id = :visible_client_id';
+            $params['visible_client_id'] = $filters['visible_client_id'];
+        }
+
         return $where ? ' WHERE ' . implode(' AND ', $where) : '';
     }
 
