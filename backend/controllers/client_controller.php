@@ -9,215 +9,260 @@ require_once __DIR__ . '/../includes/helpers.php';
 require_once __DIR__ . '/../includes/auth_check.php';
 require_once __DIR__ . '/../includes/role_check.php';
 
+const CLIENT_LIST_URL = '/MNS_CORPORATE/frontend/views/clients/list.php';
+
 function handleClientsRequest(): void
 {
-	startSecureSession();
-	requireRole(['EXPERT']);
+    startSecureSession();
+    requireRole(['EXPERT']);
 
-	$action = $_GET['action'] ?? 'list';
+    $action = $_GET['action'] ?? 'list';
 
-	switch ($action) {
-		case 'create':
-			showCreateForm();
-			break;
-		case 'store':
-			storeClient();
-			break;
-		case 'edit':
-			showEditForm((int)($_GET['id'] ?? 0));
-			break;
-		case 'update':
-			updateClient((int)($_POST['id'] ?? 0));
-			break;
-		case 'show':
-			showClient((int)($_GET['id'] ?? 0));
-			break;
-		case 'toggle':
-			toggleStatus((int)($_POST['id'] ?? $_GET['id'] ?? 0));
-			break;
-		default:
-			listClients();
-	}
+    if ($action === 'store') {
+        storeClient();
+        return;
+    }
+
+    if ($action === 'update') {
+        updateClient((int) ($_POST['id'] ?? 0));
+        return;
+    }
+
+    if ($action === 'toggle') {
+        toggleClientStatus((int) ($_POST['id'] ?? 0));
+        return;
+    }
+
+    if ($action === 'create') {
+        showCreateClientForm();
+        return;
+    }
+
+    if ($action === 'edit') {
+        showEditClientForm((int) ($_GET['id'] ?? 0));
+        return;
+    }
+
+    if ($action === 'show') {
+        showClient((int) ($_GET['id'] ?? 0));
+        return;
+    }
+
+    listClients();
 }
 
 function listClients(): void
 {
-	$pdo = getDatabaseConnection();
-	$clientModel = new Client($pdo);
+    startSecureSession();
+    requireRole(['EXPERT']);
 
-	$q = trim((string)($_GET['q'] ?? ''));
-	$status = $_GET['status'] ?? '';
-	$tax = $_GET['tax_regime'] ?? '';
-	$page = max(1, (int)($_GET['page'] ?? 1));
-	$perPage = 20;
-	$offset = ($page - 1) * $perPage;
+    $model = new Client(getDatabaseConnection());
+    $q = trim((string) ($_GET['q'] ?? ''));
+    $status = trim((string) ($_GET['status'] ?? ''));
+    $taxRegime = trim((string) ($_GET['tax_regime'] ?? ''));
+    $page = max(1, (int) ($_GET['page'] ?? 1));
+    $perPage = 20;
+    $filters = [];
 
-	$filters = [];
-	if ($q !== '') $filters['q'] = $q;
-	if ($status !== '') $filters['status'] = $status;
-	if ($tax !== '') $filters['tax_regime'] = $tax;
+    if ($q !== '') {
+        $filters['q'] = $q;
+    }
+    if (in_array($status, ['ACTIF', 'INACTIF'], true)) {
+        $filters['status'] = $status;
+    }
+    if ($taxRegime !== '') {
+        $filters['tax_regime'] = $taxRegime;
+    }
 
-	$clients = $clientModel->findAll($filters, $perPage, $offset);
-	$total = $clientModel->count($filters);
+    $clients = $model->findAll($filters, $perPage, ($page - 1) * $perPage);
+    $total = $model->countAll($filters);
+    $taxRegimes = $model->getTaxRegimes();
 
-	require_once __DIR__ . '/../../frontend/views/clients/list.php';
+    renderClientView('list.php', compact('clients', 'total', 'filters', 'page', 'perPage', 'taxRegimes'));
 }
 
-function showCreateForm(): void
+function showCreateClientForm(): void
 {
-	$client = null;
-	require_once __DIR__ . '/../../frontend/views/clients/create.php';
+    startSecureSession();
+    requireRole(['EXPERT']);
+    $client = null;
+
+    renderClientView('create.php', compact('client'));
 }
 
 function storeClient(): void
 {
-	startSecureSession();
-	$pdo = getDatabaseConnection();
-	$clientModel = new Client($pdo);
-	$audit = new AuditLog($pdo);
+    startSecureSession();
+    requireRole(['EXPERT']);
+    ensureClientPostOrRedirect(CLIENT_LIST_URL);
 
-	$data = array_map(function($v){ return is_string($v)? trim($v): $v; }, $_POST);
+    $pdo = getDatabaseConnection();
+    $model = new Client($pdo);
+    $data = normalizeClientInput($_POST);
+    $errors = validateClientData($model, $data);
 
-	$errors = validateClientData($pdo, $data);
-	if (!empty($errors)) {
-		$_SESSION['old_input'] = $_POST;
-		setFlashMessage('error', implode(' ', $errors));
-		require_once __DIR__ . '/../../frontend/views/clients/create.php';
-		return;
-	}
+    if ($errors !== []) {
+        $_SESSION['old_input'] = $data;
+        setFlashMessage('error', implode(' ', $errors));
+        $client = null;
+        renderClientView('create.php', compact('client'));
+        return;
+    }
 
-	$id = $clientModel->create($data);
-
-	if ($id > 0) {
-		$audit->log(['user_id' => currentUserId(), 'action' => 'client_create', 'description' => 'Création client: ' . ($data['company_name'] ?? '') , 'ip_address' => $_SERVER['REMOTE_ADDR'] ?? null]);
-		setFlashMessage('success', 'Client créé avec succès.');
-		redirect('/MNS_CORPORATE/clients.php');
-	}
-
-	setFlashMessage('error', 'Impossible de créer le client.');
-	redirect('/MNS_CORPORATE/clients.php');
+    $id = $model->create($data);
+    logClientAudit($pdo, 'CREATION_CLIENT', 'Creation du client #' . $id . ' : ' . $data['company_name']);
+    setFlashMessage('success', 'Client cree avec succes.');
+    redirect(CLIENT_LIST_URL);
 }
 
-function showEditForm(int $id): void
+function showEditClientForm(int $id): void
 {
-	$pdo = getDatabaseConnection();
-	$clientModel = new Client($pdo);
-	$client = $clientModel->findById($id);
-	if ($client === null) {
-		setFlashMessage('error', 'Client introuvable.');
-		redirect('/MNS_CORPORATE/clients.php');
-	}
+    startSecureSession();
+    requireRole(['EXPERT']);
+    $client = findClientOrRedirect($id);
 
-	require_once __DIR__ . '/../../frontend/views/clients/edit.php';
+    renderClientView('edit.php', compact('client'));
 }
 
 function updateClient(int $id): void
 {
-	startSecureSession();
-	$pdo = getDatabaseConnection();
-	$clientModel = new Client($pdo);
-	$audit = new AuditLog($pdo);
+    startSecureSession();
+    requireRole(['EXPERT']);
+    ensureClientPostOrRedirect(CLIENT_LIST_URL);
 
-	$data = array_map(function($v){ return is_string($v)? trim($v): $v; }, $_POST);
+    $pdo = getDatabaseConnection();
+    $model = new Client($pdo);
+    $client = findClientOrRedirect($id);
+    $data = normalizeClientInput($_POST);
+    $errors = validateClientData($model, $data, $id);
 
-	$errors = validateClientData($pdo, $data, $id);
-	if (!empty($errors)) {
-		$_SESSION['old_input'] = $_POST;
-		setFlashMessage('error', implode(' ', $errors));
-		require_once __DIR__ . '/../../frontend/views/clients/edit.php';
-		return;
-	}
+    if ($errors !== []) {
+        $_SESSION['old_input'] = $data;
+        setFlashMessage('error', implode(' ', $errors));
+        renderClientView('edit.php', compact('client'));
+        return;
+    }
 
-	$ok = $clientModel->update($id, $data);
-	if ($ok) {
-		$audit->log(['user_id' => currentUserId(), 'action' => 'client_update', 'description' => 'Mise à jour client id:' . $id, 'ip_address' => $_SERVER['REMOTE_ADDR'] ?? null]);
-		setFlashMessage('success', 'Client mis à jour.');
-		redirect('/MNS_CORPORATE/clients.php');
-	}
-
-	setFlashMessage('error', 'Aucune modification effectuée.');
-	redirect('/MNS_CORPORATE/clients.php');
+    $model->update($id, $data);
+    logClientAudit($pdo, 'MODIFICATION_CLIENT', 'Modification du client #' . $id . ' : ' . $data['company_name']);
+    setFlashMessage('success', 'Client modifie avec succes.');
+    redirect(CLIENT_LIST_URL);
 }
 
 function showClient(int $id): void
 {
-	$pdo = getDatabaseConnection();
-	$clientModel = new Client($pdo);
-	$client = $clientModel->findById($id);
-	if ($client === null) {
-		setFlashMessage('error', 'Client introuvable.');
-		redirect('/MNS_CORPORATE/clients.php');
-	}
-	require_once __DIR__ . '/../../frontend/views/clients/show.php';
+    startSecureSession();
+    requireRole(['EXPERT']);
+    $client = findClientOrRedirect($id);
+
+    renderClientView('show.php', compact('client'));
 }
 
-function toggleStatus(int $id): void
+function toggleClientStatus(int $id): void
 {
-	startSecureSession();
-	$pdo = getDatabaseConnection();
-	$clientModel = new Client($pdo);
-	$audit = new AuditLog($pdo);
+    startSecureSession();
+    requireRole(['EXPERT']);
+    ensureClientPostOrRedirect(CLIENT_LIST_URL);
 
-	$client = $clientModel->findById($id);
-	if ($client === null) {
-		setFlashMessage('error', 'Client introuvable.');
-		redirect('/MNS_CORPORATE/clients.php');
-	}
+    $pdo = getDatabaseConnection();
+    $model = new Client($pdo);
+    $client = findClientOrRedirect($id);
+    $newStatus = $client['status'] === 'ACTIF' ? 'INACTIF' : 'ACTIF';
+    $model->setStatus($id, $newStatus);
 
-	$newStatus = ($client['status'] === 'ACTIF') ? 'INACTIF' : 'ACTIF';
-	$clientModel->update($id, ['status' => $newStatus]);
+    logClientAudit(
+        $pdo,
+        $newStatus === 'ACTIF' ? 'REACTIVATION_CLIENT' : 'DESACTIVATION_CLIENT',
+        'Changement du statut du client #' . $id . ' vers ' . $newStatus
+    );
 
-	$audit->log(['user_id' => currentUserId(), 'action' => 'client_status_toggle', 'description' => 'Changement statut client id:' . $id . ' => ' . $newStatus, 'ip_address' => $_SERVER['REMOTE_ADDR'] ?? null]);
-
-	setFlashMessage('success', 'Statut mis à jour.');
-	redirect('/MNS_CORPORATE/clients.php');
+    setFlashMessage('success', 'Statut du client mis a jour.');
+    redirect(CLIENT_LIST_URL);
 }
 
-function validateClientData(PDO $pdo, array $data, int $id = 0): array
+function validateClientData(Client $model, array $data, int $id = 0): array
 {
-	$errors = [];
+    $errors = [];
 
-	$company = trim((string)($data['company_name'] ?? ''));
-	if ($company === '') {
-		$errors[] = 'Le nom de l entreprise est requis.';
-	}
+    if ($data['company_name'] === '') {
+        $errors[] = 'Le nom de l entreprise est obligatoire.';
+    }
 
-	$email = trim((string)($data['email'] ?? ''));
-	if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-		$errors[] = 'Email invalide.';
-	}
+    if ($data['email'] !== '' && !filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+        $errors[] = 'L email est invalide.';
+    }
 
-	$ninea = trim((string)($data['ninea'] ?? ''));
-	if ($ninea !== '') {
-		$stmt = $pdo->prepare('SELECT id FROM clients WHERE ninea = :ninea' . ($id ? ' AND id != :id' : ''));
-		$params = ['ninea' => $ninea];
-		if ($id) $params['id'] = $id;
-		$stmt->execute($params);
-		if ($stmt->fetch()) $errors[] = 'NINEA déjà utilisé.';
-	}
+    if ($data['ninea'] !== '' && $model->existsByNinea($data['ninea'], $id)) {
+        $errors[] = 'Le NINEA est deja utilise.';
+    }
 
-	$rccm = trim((string)($data['rccm'] ?? ''));
-	if ($rccm !== '') {
-		$stmt = $pdo->prepare('SELECT id FROM clients WHERE rccm = :rccm' . ($id ? ' AND id != :id' : ''));
-		$params = ['rccm' => $rccm];
-		if ($id) $params['id'] = $id;
-		$stmt->execute($params);
-		if ($stmt->fetch()) $errors[] = 'RCCM déjà utilisé.';
-	}
+    if ($data['rccm'] !== '' && $model->existsByRccm($data['rccm'], $id)) {
+        $errors[] = 'Le RCCM est deja utilise.';
+    }
 
-	$start = $data['accounting_year_start'] ?? null;
-	$end = $data['accounting_year_end'] ?? null;
-	if ($start && $end) {
-		if (strtotime($end) < strtotime($start)) {
-			$errors[] = 'La date de fin de l exercice ne peut être antérieure au début.';
-		}
-	}
+    if ($data['accounting_year_start'] !== '' && $data['accounting_year_end'] !== '' && $data['accounting_year_end'] < $data['accounting_year_start']) {
+        $errors[] = 'La date de fin d exercice doit etre superieure ou egale a la date de debut.';
+    }
 
-	$status = $data['status'] ?? '';
-	if ($status === '') $status = 'ACTIF';
-	if (!in_array($status, ['ACTIF','INACTIF'], true)) {
-		$errors[] = 'Statut invalide.';
-	}
+    if (!in_array($data['status'], ['ACTIF', 'INACTIF'], true)) {
+        $errors[] = 'Le statut client est invalide.';
+    }
 
-	return $errors;
+    return $errors;
+}
+
+function normalizeClientInput(array $input): array
+{
+    $fields = [
+        'company_name', 'legal_form', 'contact_name', 'email', 'phone', 'address',
+        'ninea', 'rccm', 'tax_regime', 'accounting_year_start', 'accounting_year_end', 'status',
+    ];
+    $data = [];
+
+    foreach ($fields as $field) {
+        $data[$field] = trim((string) ($input[$field] ?? ''));
+    }
+
+    $data['status'] = $data['status'] === '' ? 'ACTIF' : $data['status'];
+
+    return $data;
+}
+
+function findClientOrRedirect(int $id): array
+{
+    $client = (new Client(getDatabaseConnection()))->findById($id);
+
+    if ($client === null) {
+        setFlashMessage('error', 'Client introuvable.');
+        redirect(CLIENT_LIST_URL);
+    }
+
+    return $client;
+}
+
+function renderClientView(string $view, array $vars = []): void
+{
+    extract($vars, EXTR_SKIP);
+    if (!defined('MNS_CONTROLLER_RENDER')) {
+        define('MNS_CONTROLLER_RENDER', true);
+    }
+    require __DIR__ . '/../../frontend/views/clients/' . $view;
+}
+
+function ensureClientPostOrRedirect(string $target): void
+{
+    if (!isPostRequest()) {
+        setFlashMessage('error', 'Action non autorisee en GET.');
+        redirect($target);
+    }
+}
+
+function logClientAudit(PDO $pdo, string $action, string $description): void
+{
+    (new AuditLog($pdo))->log([
+        'user_id' => currentUserId(),
+        'action' => $action,
+        'description' => $description,
+        'ip_address' => $_SERVER['REMOTE_ADDR'] ?? null,
+    ]);
 }

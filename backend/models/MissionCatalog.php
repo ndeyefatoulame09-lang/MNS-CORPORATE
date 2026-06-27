@@ -1,101 +1,94 @@
 <?php
 declare(strict_types=1);
 
-/**
- * Modèle pour le catalogue des missions.
- */
+require_once __DIR__ . '/BaseModel.php';
+
 class MissionCatalog extends BaseModel
 {
-    protected ?int $id = null;
-    protected string $name = '';
-    protected string $description = '';
-    protected ?float $defaultRate = null;
-    protected ?string $createdAt = null;
-    protected ?string $updatedAt = null;
-
-    public function __construct(\PDO $db, array $data = [])
-    {
-        parent::__construct($db);
-        $this->hydrate($data);
-    }
-
-    public function hydrate(array $data): void
-    {
-        $this->id = isset($data['id']) ? (int) $data['id'] : null;
-        $this->name = $data['name'] ?? '';
-        $this->description = $data['description'] ?? '';
-        $this->defaultRate = isset($data['default_rate']) ? (float) $data['default_rate'] : (isset($data['defaultRate']) ? (float) $data['defaultRate'] : null);
-        $this->createdAt = $data['created_at'] ?? $data['createdAt'] ?? null;
-        $this->updatedAt = $data['updated_at'] ?? $data['updatedAt'] ?? null;
-    }
-
-    public function toArray(): array
-    {
-        return [
-            'id' => $this->id,
-            'name' => $this->name,
-            'description' => $this->description,
-            'default_rate' => $this->defaultRate,
-            'created_at' => $this->createdAt,
-            'updated_at' => $this->updatedAt,
-        ];
-    }
-
     public function findById(int $id): ?array
     {
-        return $this->fetchOne('SELECT * FROM `mission_catalogs` WHERE `id` = :id', ['id' => $id]);
+        return $this->fetchOne('SELECT * FROM `mission_catalog` WHERE `id` = :id', ['id' => $id]);
     }
 
     public function findAll(array $filters = [], int $limit = 20, int $offset = 0): array
     {
         $params = [];
-        $filterClause = $this->buildFilterClause($filters, $params);
-
+        $where = $this->buildWhere($filters, $params);
         $params['limit'] = $limit;
         $params['offset'] = $offset;
 
         return $this->fetchAll(
-            "SELECT * FROM `mission_catalogs`{$filterClause} ORDER BY `id` ASC LIMIT :limit OFFSET :offset",
+            "SELECT * FROM `mission_catalog`{$where} ORDER BY `name` ASC LIMIT :limit OFFSET :offset",
             $params
         );
     }
 
+    public function countAll(array $filters = []): int
+    {
+        $params = [];
+        $where = $this->buildWhere($filters, $params);
+        $row = $this->fetchOne("SELECT COUNT(*) AS total FROM `mission_catalog`{$where}", $params);
+
+        return $row === null ? 0 : (int) $row['total'];
+    }
+
     public function create(array $data): int
     {
-        $insertData = [
+        return $this->insert('mission_catalog', [
             'name' => $data['name'] ?? '',
-            'description' => $data['description'] ?? '',
-            'default_rate' => isset($data['default_rate']) ? (float) $data['default_rate'] : (isset($data['defaultRate']) ? (float) $data['defaultRate'] : null),
-        ];
-
-        return $this->insert('mission_catalogs', $insertData);
+            'description' => $this->nullable($data['description'] ?? null),
+            'default_duration_days' => $this->nullable($data['default_duration_days'] ?? null),
+            'is_active' => isset($data['is_active']) ? (int) $data['is_active'] : 1,
+        ]);
     }
 
     public function update(int $id, array $data): bool
     {
-        $updateData = [];
-
-        if (isset($data['name'])) {
-            $updateData['name'] = $data['name'];
-        }
-
-        if (isset($data['description'])) {
-            $updateData['description'] = $data['description'];
-        }
-
-        if (isset($data['default_rate']) || isset($data['defaultRate'])) {
-            $updateData['default_rate'] = isset($data['default_rate']) ? (float) $data['default_rate'] : (float) $data['defaultRate'];
-        }
-
-        if (empty($updateData)) {
-            return false;
-        }
-
-        return $this->updateRecord('mission_catalogs', $id, $updateData);
+        return $this->updateRecord('mission_catalog', $id, [
+            'name' => $data['name'] ?? '',
+            'description' => $this->nullable($data['description'] ?? null),
+            'default_duration_days' => $this->nullable($data['default_duration_days'] ?? null),
+            'is_active' => isset($data['is_active']) ? (int) $data['is_active'] : 1,
+        ]);
     }
 
-    public function delete(int $id): bool
+    public function setActiveStatus(int $id, bool $isActive): bool
     {
-        return $this->deleteRecord('mission_catalogs', $id);
+        return $this->updateRecord('mission_catalog', $id, ['is_active' => $isActive ? 1 : 0]);
+    }
+
+    public function existsByName(string $name, int $excludeId = 0): bool
+    {
+        $sql = 'SELECT id FROM `mission_catalog` WHERE `name` = :name';
+        $params = ['name' => $name];
+
+        if ($excludeId > 0) {
+            $sql .= ' AND `id` <> :id';
+            $params['id'] = $excludeId;
+        }
+
+        return $this->fetchOne($sql, $params) !== null;
+    }
+
+    private function buildWhere(array $filters, array &$params): string
+    {
+        $where = [];
+
+        if (($filters['q'] ?? '') !== '') {
+            $where[] = '`name` LIKE :q';
+            $params['q'] = '%' . $filters['q'] . '%';
+        }
+
+        if (($filters['is_active'] ?? '') !== '') {
+            $where[] = '`is_active` = :is_active';
+            $params['is_active'] = (int) $filters['is_active'];
+        }
+
+        return $where ? ' WHERE ' . implode(' AND ', $where) : '';
+    }
+
+    private function nullable(mixed $value): mixed
+    {
+        return $value === '' ? null : $value;
     }
 }

@@ -1,101 +1,100 @@
 <?php
 declare(strict_types=1);
 
+if (!defined('MNS_CONTROLLER_RENDER')) {
+    require_once __DIR__ . '/../../../backend/controllers/client_controller.php';
+    handleClientsRequest();
+    return;
+}
+
 require_once __DIR__ . '/../../../backend/includes/helpers.php';
 require_once __DIR__ . '/../../../backend/includes/role_check.php';
-
 requireRole(['EXPERT']);
 
 $flash = getFlashMessage();
-$filters = $filters ?? [];
-$page = $page ?? 1;
-$perPage = $perPage ?? 20;
-$total = $total ?? 0;
-$clients = $clients ?? [];
-
+$pages = max(1, (int) ceil(($total ?? 0) / ($perPage ?? 20)));
+$queryBase = $filters ?? [];
 require_once __DIR__ . '/../includes/header.php';
-require_once __DIR__ . '/../includes/sidebar.php';
 ?>
-
-<div class="container py-4">
+<div class="d-flex">
+<?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
+<main class="container-fluid py-4">
     <?php if ($flash !== null): ?>
-        <div class="alert alert-<?php echo e($flash['type'] === 'success' ? 'success' : 'danger'); ?>" role="alert">
-            <?php echo e($flash['message']); ?>
-        </div>
+        <div class="alert alert-<?php echo e($flash['type'] === 'success' ? 'success' : 'danger'); ?>"><?php echo e($flash['message']); ?></div>
     <?php endif; ?>
 
     <div class="d-flex justify-content-between align-items-center mb-3">
-        <h1 class="h4">Clients</h1>
-        <a href="/MNS_CORPORATE/clients.php?action=create" class="btn btn-primary">Nouveau client</a>
+        <div>
+            <h1 class="h4 mb-1">Clients</h1>
+            <div class="text-muted"><?php echo e((string) ($total ?? 0)); ?> resultat(s)</div>
+        </div>
+        <a class="btn btn-primary" href="/MNS_CORPORATE/frontend/views/clients/create.php">Nouveau client</a>
     </div>
 
-    <form method="get" action="/MNS_CORPORATE/clients.php" class="row g-2 mb-3">
-        <input type="hidden" name="action" value="list">
-        <div class="col-md-4">
-            <input type="search" name="q" value="<?php echo e($filters['q'] ?? ''); ?>" class="form-control" placeholder="Recherche par nom, contact, email, NINEA ou RCCM">
-        </div>
+    <form method="get" action="/MNS_CORPORATE/frontend/views/clients/list.php" class="row g-2 mb-3">
+        <div class="col-md-4"><input class="form-control" type="search" name="q" value="<?php echo e($filters['q'] ?? ''); ?>" placeholder="Entreprise, contact, email, NINEA, RCCM"></div>
         <div class="col-md-2">
-            <select name="status" class="form-select">
+            <select class="form-select" name="status">
                 <option value="">Tous statuts</option>
-                <option value="ACTIF" <?php echo (isset($filters['status']) && $filters['status']==='ACTIF') ? 'selected' : ''; ?>>ACTIF</option>
-                <option value="INACTIF" <?php echo (isset($filters['status']) && $filters['status']==='INACTIF') ? 'selected' : ''; ?>>INACTIF</option>
+                <option value="ACTIF" <?php echo (($filters['status'] ?? '') === 'ACTIF') ? 'selected' : ''; ?>>ACTIF</option>
+                <option value="INACTIF" <?php echo (($filters['status'] ?? '') === 'INACTIF') ? 'selected' : ''; ?>>INACTIF</option>
             </select>
         </div>
-        <div class="col-md-2">
-            <input type="text" name="tax_regime" value="<?php echo e($filters['tax_regime'] ?? ''); ?>" class="form-control" placeholder="Tax regime">
+        <div class="col-md-3">
+            <select class="form-select" name="tax_regime">
+                <option value="">Tous regimes fiscaux</option>
+                <?php foreach (($taxRegimes ?? []) as $tax): ?>
+                    <option value="<?php echo e($tax['tax_regime']); ?>" <?php echo (($filters['tax_regime'] ?? '') === $tax['tax_regime']) ? 'selected' : ''; ?>><?php echo e($tax['tax_regime']); ?></option>
+                <?php endforeach; ?>
+            </select>
         </div>
-        <div class="col-md-2">
-            <button class="btn btn-outline-secondary w-100">Filtrer</button>
+        <div class="col-md-3 d-flex gap-2">
+            <button class="btn btn-outline-secondary" type="submit">Filtrer</button>
+            <a class="btn btn-link" href="/MNS_CORPORATE/frontend/views/clients/list.php">Reinitialiser</a>
         </div>
     </form>
 
-    <div class="table-responsive">
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>Entreprise</th>
-                    <th>Contact</th>
-                    <th>Email</th>
-                    <th>NINEA / RCCM</th>
-                    <th>Status</th>
-                    <th></th>
-                </tr>
+    <div class="table-responsive bg-white border rounded">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr><th>Entreprise</th><th>Contact</th><th>Email</th><th>NINEA / RCCM</th><th>Regime</th><th>Statut</th><th class="text-end">Actions</th></tr>
             </thead>
             <tbody>
-                <?php foreach ($clients as $c): ?>
+                <?php foreach (($clients ?? []) as $client): ?>
                     <tr>
-                        <td><?php echo e((string)$c['id']); ?></td>
-                        <td><?php echo e($c['company_name']); ?></td>
-                        <td><?php echo e($c['contact_name']); ?></td>
-                        <td><?php echo e($c['email']); ?></td>
-                        <td><?php echo e($c['ninea']) . ' / ' . e($c['rccm']); ?></td>
-                        <td><?php echo e($c['status']); ?></td>
+                        <td><?php echo e($client['company_name']); ?></td>
+                        <td><?php echo e($client['contact_name']); ?></td>
+                        <td><?php echo e($client['email']); ?></td>
+                        <td><?php echo e($client['ninea']); ?> / <?php echo e($client['rccm']); ?></td>
+                        <td><?php echo e($client['tax_regime']); ?></td>
+                        <td><span class="badge text-bg-<?php echo $client['status'] === 'ACTIF' ? 'success' : 'secondary'; ?>"><?php echo e($client['status']); ?></span></td>
                         <td class="text-end">
-                            <a href="/MNS_CORPORATE/clients.php?action=show&id=<?php echo e((string)$c['id']); ?>" class="btn btn-sm btn-outline-primary">Voir</a>
-                            <a href="/MNS_CORPORATE/clients.php?action=edit&id=<?php echo e((string)$c['id']); ?>" class="btn btn-sm btn-outline-secondary">Modifier</a>
-                            <form method="post" action="/MNS_CORPORATE/clients.php?action=toggle" style="display:inline-block" onsubmit="return confirm('Confirmer le changement de statut ?');">
-                                <input type="hidden" name="id" value="<?php echo e((string)$c['id']); ?>">
-                                <button type="submit" class="btn btn-sm btn-outline-danger"><?php echo $c['status'] === 'ACTIF' ? 'Désactiver' : 'Réactiver'; ?></button>
+                            <a class="btn btn-sm btn-outline-primary" href="/MNS_CORPORATE/frontend/views/clients/show.php?id=<?php echo e((string) $client['id']); ?>">Voir</a>
+                            <a class="btn btn-sm btn-outline-secondary" href="/MNS_CORPORATE/frontend/views/clients/edit.php?id=<?php echo e((string) $client['id']); ?>">Modifier</a>
+                            <form method="post" action="/MNS_CORPORATE/frontend/views/clients/list.php?action=toggle" class="d-inline" onsubmit="return confirm('Confirmer cette action ?');">
+                                <input type="hidden" name="id" value="<?php echo e((string) $client['id']); ?>">
+                                <button class="btn btn-sm btn-outline-danger" type="submit"><?php echo $client['status'] === 'ACTIF' ? 'Desactiver' : 'Reactiver'; ?></button>
                             </form>
                         </td>
                     </tr>
                 <?php endforeach; ?>
+                <?php if (($clients ?? []) === []): ?>
+                    <tr><td colspan="7" class="text-center text-muted py-4">Aucun client trouve.</td></tr>
+                <?php endif; ?>
             </tbody>
         </table>
     </div>
 
-    <div class="d-flex justify-content-between align-items-center">
-        <div>Résultats: <?php echo e((string)$total); ?></div>
-        <nav>
-            <?php $pages = (int) ceil($total / $perPage); ?>
-            <ul class="pagination mb-0">
-                <?php for ($i=1;$i<=$pages;$i++): ?>
-                    <li class="page-item <?php echo $i===$page ? 'active' : ''; ?>"><a class="page-link" href="/MNS_CORPORATE/clients.php?action=list&page=<?php echo $i; ?><?php echo $filters['q'] ? '&q=' . urlencode($filters['q']) : ''; ?><?php echo $filters['status'] ? '&status=' . urlencode($filters['status']) : ''; ?><?php echo $filters['tax_regime'] ? '&tax_regime=' . urlencode($filters['tax_regime']) : ''; ?>"><?php echo $i; ?></a></li>
-                <?php endfor; ?>
-            </ul>
-        </nav>
-    </div>
+    <nav class="mt-3">
+        <ul class="pagination">
+            <?php for ($i = 1; $i <= $pages; $i++): ?>
+                <?php $queryBase['page'] = $i; ?>
+                <li class="page-item <?php echo $i === ($page ?? 1) ? 'active' : ''; ?>">
+                    <a class="page-link" href="/MNS_CORPORATE/frontend/views/clients/list.php?<?php echo e(http_build_query($queryBase)); ?>"><?php echo e((string) $i); ?></a>
+                </li>
+            <?php endfor; ?>
+        </ul>
+    </nav>
+</main>
 </div>
-
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

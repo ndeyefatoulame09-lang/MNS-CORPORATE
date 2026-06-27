@@ -14,7 +14,9 @@ $user = currentUser();
 		<ul class="nav flex-column">
 			<li class="nav-item mb-2"><a class="nav-link" href="/MNS_CORPORATE/index.php">Dashboard</a></li>
 			<?php if (isset($user['role']) && $user['role'] === 'EXPERT'): ?>
-				<li class="nav-item mb-2"><a class="nav-link" href="/MNS_CORPORATE/clients.php">Clients</a></li>
+				<li class="nav-item mb-2"><a class="nav-link" href="/MNS_CORPORATE/frontend/views/clients/list.php">Clients</a></li>
+				<li class="nav-item mb-2"><a class="nav-link" href="/MNS_CORPORATE/frontend/views/missions/list.php">Missions</a></li>
+				<li class="nav-item mb-2"><a class="nav-link" href="/MNS_CORPORATE/frontend/views/missions/catalog_list.php">Catalogue missions</a></li>
 			<?php endif; ?>
 		</ul>
 	<?php else: ?>

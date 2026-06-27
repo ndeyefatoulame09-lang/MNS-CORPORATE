@@ -1,217 +1,167 @@
 <?php
 declare(strict_types=1);
 
-/**
- * Modèle pour les missions.
- */
+require_once __DIR__ . '/BaseModel.php';
+
 class Mission extends BaseModel
 {
-    public const STATUS_PENDING = 'pending';
-    public const STATUS_IN_PROGRESS = 'in_progress';
-    public const STATUS_COMPLETED = 'completed';
-
-    protected ?int $id = null;
-    protected ?int $clientId = null;
-    protected ?int $assignedUserId = null;
-    protected string $title = '';
-    protected string $description = '';
-    protected string $status = self::STATUS_PENDING;
-    protected ?float $rate = null;
-    protected ?float $estimatedHours = null;
-    protected ?string $startDate = null;
-    protected ?string $endDate = null;
-    protected ?string $createdAt = null;
-    protected ?string $updatedAt = null;
-
-    public function __construct(PDO $db, array $data = [])
-    {
-        parent::__construct($db);
-        $this->hydrate($data);
-    }
-
-    public function hydrate(array $data): void
-    {
-        $this->id = isset($data['id']) ? (int) $data['id'] : null;
-        $this->clientId = isset($data['client_id']) ? (int) $data['client_id'] : (isset($data['clientId']) ? (int) $data['clientId'] : null);
-        $this->assignedUserId = isset($data['assigned_user_id']) ? (int) $data['assigned_user_id'] : (isset($data['assignedUserId']) ? (int) $data['assignedUserId'] : null);
-        $this->title = $data['title'] ?? '';
-        $this->description = $data['description'] ?? '';
-        $this->status = $data['status'] ?? self::STATUS_PENDING;
-        $this->rate = isset($data['rate']) ? (float) $data['rate'] : null;
-        $this->estimatedHours = isset($data['estimated_hours']) ? (float) $data['estimated_hours'] : (isset($data['estimatedHours']) ? (float) $data['estimatedHours'] : null);
-        $this->startDate = $data['start_date'] ?? $data['startDate'] ?? null;
-        $this->endDate = $data['end_date'] ?? $data['endDate'] ?? null;
-        $this->createdAt = $data['created_at'] ?? $data['createdAt'] ?? null;
-        $this->updatedAt = $data['updated_at'] ?? $data['updatedAt'] ?? null;
-    }
-
-    public function toArray(): array
-    {
-        return [
-            'id' => $this->id,
-            'client_id' => $this->clientId,
-            'assigned_user_id' => $this->assignedUserId,
-            'title' => $this->title,
-            'description' => $this->description,
-            'status' => $this->status,
-            'rate' => $this->rate,
-            'estimated_hours' => $this->estimatedHours,
-            'start_date' => $this->startDate,
-            'end_date' => $this->endDate,
-            'created_at' => $this->createdAt,
-            'updated_at' => $this->updatedAt,
-        ];
-    }
+    public const STATUSES = ['A_FAIRE', 'EN_COURS', 'TERMINEE', 'EN_RETARD', 'ANNULEE'];
+    public const PRIORITIES = ['BASSE', 'MOYENNE', 'HAUTE'];
 
     public function findById(int $id): ?array
     {
-        return $this->fetchOne('SELECT * FROM `missions` WHERE `id` = :id', ['id' => $id]);
+        return $this->fetchOne(
+            'SELECT m.*, c.company_name AS client_name, mc.name AS catalog_name, u.full_name AS creator_name
+             FROM `missions` m
+             INNER JOIN `clients` c ON c.id = m.client_id
+             INNER JOIN `mission_catalog` mc ON mc.id = m.mission_catalog_id
+             INNER JOIN `users` u ON u.id = m.created_by
+             WHERE m.id = :id',
+            ['id' => $id]
+        );
     }
 
     public function findAll(array $filters = [], int $limit = 20, int $offset = 0): array
     {
         $params = [];
-        $filterClause = $this->buildFilterClause($filters, $params);
-
+        $where = $this->buildWhere($filters, $params);
         $params['limit'] = $limit;
         $params['offset'] = $offset;
 
         return $this->fetchAll(
-            "SELECT * FROM `missions`{$filterClause} ORDER BY `id` ASC LIMIT :limit OFFSET :offset",
+            "SELECT m.*, c.company_name AS client_name, mc.name AS catalog_name
+             FROM `missions` m
+             INNER JOIN `clients` c ON c.id = m.client_id
+             INNER JOIN `mission_catalog` mc ON mc.id = m.mission_catalog_id
+             {$where}
+             ORDER BY m.start_date DESC, m.id DESC
+             LIMIT :limit OFFSET :offset",
             $params
         );
     }
 
+    public function countAll(array $filters = []): int
+    {
+        $params = [];
+        $where = $this->buildWhere($filters, $params);
+        $row = $this->fetchOne(
+            "SELECT COUNT(*) AS total
+             FROM `missions` m
+             INNER JOIN `clients` c ON c.id = m.client_id
+             INNER JOIN `mission_catalog` mc ON mc.id = m.mission_catalog_id
+             {$where}",
+            $params
+        );
+
+        return $row === null ? 0 : (int) $row['total'];
+    }
+
     public function create(array $data): int
     {
-        $insertData = [
-            'client_id' => $data['client_id'] ?? $data['clientId'] ?? null,
-            'assigned_user_id' => $data['assigned_user_id'] ?? $data['assignedUserId'] ?? null,
+        return $this->insert('missions', [
+            'client_id' => (int) $data['client_id'],
+            'mission_catalog_id' => (int) $data['mission_catalog_id'],
             'title' => $data['title'] ?? '',
-            'description' => $data['description'] ?? '',
-            'status' => $data['status'] ?? self::STATUS_PENDING,
-            'rate' => isset($data['rate']) ? (float) $data['rate'] : null,
-            'estimated_hours' => isset($data['estimated_hours']) ? (float) $data['estimated_hours'] : (isset($data['estimatedHours']) ? (float) $data['estimatedHours'] : null),
-            'start_date' => $data['start_date'] ?? $data['startDate'] ?? null,
-            'end_date' => $data['end_date'] ?? $data['endDate'] ?? null,
-        ];
-
-        return $this->insert('missions', $insertData);
+            'description' => $this->nullable($data['description'] ?? null),
+            'start_date' => $data['start_date'] ?? null,
+            'planned_end_date' => $this->nullable($data['planned_end_date'] ?? null),
+            'actual_end_date' => $this->nullable($data['actual_end_date'] ?? null),
+            'status' => $data['status'] ?? 'A_FAIRE',
+            'priority' => $data['priority'] ?? 'MOYENNE',
+            'estimated_hours' => $this->nullable($data['estimated_hours'] ?? null),
+            'created_by' => (int) $data['created_by'],
+        ]);
     }
 
     public function update(int $id, array $data): bool
     {
-        $updateData = [];
-
-        if (isset($data['client_id']) || isset($data['clientId'])) {
-            $updateData['client_id'] = $data['client_id'] ?? $data['clientId'];
-        }
-
-        if (isset($data['assigned_user_id']) || isset($data['assignedUserId'])) {
-            $updateData['assigned_user_id'] = $data['assigned_user_id'] ?? $data['assignedUserId'];
-        }
-
-        if (isset($data['title'])) {
-            $updateData['title'] = $data['title'];
-        }
-
-        if (isset($data['description'])) {
-            $updateData['description'] = $data['description'];
-        }
-
-        if (isset($data['status'])) {
-            $updateData['status'] = $data['status'];
-        }
-
-        if (isset($data['rate'])) {
-            $updateData['rate'] = (float) $data['rate'];
-        }
-
-        if (isset($data['estimated_hours']) || isset($data['estimatedHours'])) {
-            $updateData['estimated_hours'] = $data['estimated_hours'] ?? $data['estimatedHours'];
-        }
-
-        if (isset($data['start_date']) || isset($data['startDate'])) {
-            $updateData['start_date'] = $data['start_date'] ?? $data['startDate'];
-        }
-
-        if (isset($data['end_date']) || isset($data['endDate'])) {
-            $updateData['end_date'] = $data['end_date'] ?? $data['endDate'];
-        }
-
-        if (empty($updateData)) {
-            return false;
-        }
-
-        return $this->updateRecord('missions', $id, $updateData);
+        return $this->updateRecord('missions', $id, [
+            'client_id' => (int) $data['client_id'],
+            'mission_catalog_id' => (int) $data['mission_catalog_id'],
+            'title' => $data['title'] ?? '',
+            'description' => $this->nullable($data['description'] ?? null),
+            'start_date' => $data['start_date'] ?? null,
+            'planned_end_date' => $this->nullable($data['planned_end_date'] ?? null),
+            'actual_end_date' => $this->nullable($data['actual_end_date'] ?? null),
+            'status' => $data['status'] ?? 'A_FAIRE',
+            'priority' => $data['priority'] ?? 'MOYENNE',
+            'estimated_hours' => $this->nullable($data['estimated_hours'] ?? null),
+        ]);
     }
 
-    public function delete(int $id): bool
+    public function updateStatus(int $id, string $status, ?string $actualEndDate): bool
     {
-        return $this->deleteRecord('missions', $id);
+        return $this->updateRecord('missions', $id, [
+            'status' => $status,
+            'actual_end_date' => $actualEndDate,
+        ]);
     }
 
-    public function findByClient(int $clientId): array
+    public function existsClient(int $clientId, bool $activeOnly = false): bool
     {
-        return $this->fetchAll('SELECT * FROM `missions` WHERE `client_id` = :client_id ORDER BY `id` ASC', ['client_id' => $clientId]);
-    }
-
-    public function findByAssignedUser(int $userId): array
-    {
-        return $this->fetchAll('SELECT * FROM `missions` WHERE `assigned_user_id` = :assigned_user_id ORDER BY `id` ASC', ['assigned_user_id' => $userId]);
-    }
-
-    public function getClient(): ?array
-    {
-        if ($this->clientId === null) {
-            return null;
+        $sql = 'SELECT id FROM `clients` WHERE `id` = :id';
+        if ($activeOnly) {
+            $sql .= " AND `status` = 'ACTIF'";
         }
 
-        return $this->fetchOne('SELECT * FROM `clients` WHERE `id` = :id', ['id' => $this->clientId]);
+        return $this->fetchOne($sql, ['id' => $clientId]) !== null;
     }
 
-    public function getAssignedUser(): ?array
+    public function existsCatalog(int $catalogId, bool $activeOnly = false): bool
     {
-        if ($this->assignedUserId === null) {
-            return null;
+        $sql = 'SELECT id FROM `mission_catalog` WHERE `id` = :id';
+        if ($activeOnly) {
+            $sql .= ' AND `is_active` = 1';
         }
 
-        return $this->fetchOne('SELECT * FROM `users` WHERE `id` = :id', ['id' => $this->assignedUserId]);
+        return $this->fetchOne($sql, ['id' => $catalogId]) !== null;
     }
 
-    public function getDocuments(): array
+    public function getActiveClients(): array
     {
-        if ($this->id === null) {
-            return [];
-        }
-
-        return $this->fetchAll('SELECT * FROM `documents` WHERE `mission_id` = :mission_id ORDER BY `id` ASC', ['mission_id' => $this->id]);
+        return $this->fetchAll(
+            "SELECT id, company_name FROM `clients` WHERE `status` = 'ACTIF' ORDER BY `company_name` ASC"
+        );
     }
 
-    public function getComments(): array
+    public function getActiveCatalogItems(): array
     {
-        if ($this->id === null) {
-            return [];
-        }
-
-        return $this->fetchAll('SELECT * FROM `comments` WHERE `mission_id` = :mission_id ORDER BY `created_at` DESC', ['mission_id' => $this->id]);
+        return $this->fetchAll(
+            'SELECT id, name FROM `mission_catalog` WHERE `is_active` = 1 ORDER BY `name` ASC'
+        );
     }
 
-    public function getTimesheets(): array
+    private function buildWhere(array $filters, array &$params): string
     {
-        if ($this->id === null) {
-            return [];
+        $where = [];
+
+        if (($filters['q'] ?? '') !== '') {
+            $where[] = '(m.title LIKE :q OR m.description LIKE :q)';
+            $params['q'] = '%' . $filters['q'] . '%';
         }
 
-        return $this->fetchAll('SELECT * FROM `timesheets` WHERE `mission_id` = :mission_id ORDER BY `entry_date` DESC', ['mission_id' => $this->id]);
+        foreach (['client_id', 'mission_catalog_id', 'status', 'priority'] as $field) {
+            if (($filters[$field] ?? '') !== '') {
+                $where[] = "m.`{$field}` = :{$field}";
+                $params[$field] = $filters[$field];
+            }
+        }
+
+        if (($filters['start_from'] ?? '') !== '') {
+            $where[] = 'm.start_date >= :start_from';
+            $params['start_from'] = $filters['start_from'];
+        }
+
+        if (($filters['start_to'] ?? '') !== '') {
+            $where[] = 'm.start_date <= :start_to';
+            $params['start_to'] = $filters['start_to'];
+        }
+
+        return $where ? ' WHERE ' . implode(' AND ', $where) : '';
     }
 
-    public function getAssignments(): array
+    private function nullable(mixed $value): mixed
     {
-        if ($this->id === null) {
-            return [];
-        }
-
-        return $this->fetchAll('SELECT * FROM `mission_assignments` WHERE `mission_id` = :mission_id ORDER BY `id` ASC', ['mission_id' => $this->id]);
+        return $value === '' ? null : $value;
     }
 }

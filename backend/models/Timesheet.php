@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/BaseModel.php';
+
 /**
  * Modèle pour les feuilles de temps.
  */
@@ -9,13 +11,13 @@ class Timesheet extends BaseModel
     protected ?int $id = null;
     protected ?int $userId = null;
     protected ?int $missionId = null;
-    protected float $hours = 0.0;
-    protected ?string $entryDate = null;
+    protected float $hoursWorked = 0.0;
+    protected ?string $workDate = null;
     protected ?string $description = null;
-    protected ?float $rate = null;
-    protected ?float $total = null;
+    protected string $status = 'SAISI';
+    protected ?int $validatedBy = null;
+    protected ?string $validatedAt = null;
     protected ?string $createdAt = null;
-    protected ?string $updatedAt = null;
 
     public function __construct(PDO $db, array $data = [])
     {
@@ -28,13 +30,13 @@ class Timesheet extends BaseModel
         $this->id = isset($data['id']) ? (int) $data['id'] : null;
         $this->userId = isset($data['user_id']) ? (int) $data['user_id'] : (isset($data['userId']) ? (int) $data['userId'] : null);
         $this->missionId = isset($data['mission_id']) ? (int) $data['mission_id'] : (isset($data['missionId']) ? (int) $data['missionId'] : null);
-        $this->hours = isset($data['hours']) ? (float) $data['hours'] : 0.0;
-        $this->entryDate = $data['entry_date'] ?? $data['entryDate'] ?? null;
+        $this->hoursWorked = isset($data['hours_worked']) ? (float) $data['hours_worked'] : (isset($data['hoursWorked']) ? (float) $data['hoursWorked'] : 0.0);
+        $this->workDate = $data['work_date'] ?? $data['workDate'] ?? null;
         $this->description = $data['description'] ?? null;
-        $this->rate = isset($data['rate']) ? (float) $data['rate'] : null;
-        $this->total = isset($data['total']) ? (float) $data['total'] : null;
+        $this->status = $data['status'] ?? 'SAISI';
+        $this->validatedBy = isset($data['validated_by']) ? (int) $data['validated_by'] : (isset($data['validatedBy']) ? (int) $data['validatedBy'] : null);
+        $this->validatedAt = $data['validated_at'] ?? $data['validatedAt'] ?? null;
         $this->createdAt = $data['created_at'] ?? $data['createdAt'] ?? null;
-        $this->updatedAt = $data['updated_at'] ?? $data['updatedAt'] ?? null;
     }
 
     public function toArray(): array
@@ -43,13 +45,13 @@ class Timesheet extends BaseModel
             'id' => $this->id,
             'user_id' => $this->userId,
             'mission_id' => $this->missionId,
-            'hours' => $this->hours,
-            'entry_date' => $this->entryDate,
+            'hours_worked' => $this->hoursWorked,
+            'work_date' => $this->workDate,
             'description' => $this->description,
-            'rate' => $this->rate,
-            'total' => $this->total,
+            'status' => $this->status,
+            'validated_by' => $this->validatedBy,
+            'validated_at' => $this->validatedAt,
             'created_at' => $this->createdAt,
-            'updated_at' => $this->updatedAt,
         ];
     }
 
@@ -67,7 +69,7 @@ class Timesheet extends BaseModel
         $params['offset'] = $offset;
 
         return $this->fetchAll(
-            "SELECT * FROM `timesheets`{$filterClause} ORDER BY `entry_date` DESC LIMIT :limit OFFSET :offset",
+            "SELECT * FROM `timesheets`{$filterClause} ORDER BY `work_date` DESC LIMIT :limit OFFSET :offset",
             $params
         );
     }
@@ -77,11 +79,12 @@ class Timesheet extends BaseModel
         $insertData = [
             'user_id' => $data['user_id'] ?? $data['userId'] ?? null,
             'mission_id' => $data['mission_id'] ?? $data['missionId'] ?? null,
-            'hours' => isset($data['hours']) ? (float) $data['hours'] : 0.0,
-            'entry_date' => $data['entry_date'] ?? $data['entryDate'] ?? null,
+            'hours_worked' => isset($data['hours_worked']) ? (float) $data['hours_worked'] : (isset($data['hoursWorked']) ? (float) $data['hoursWorked'] : 0.0),
+            'work_date' => $data['work_date'] ?? $data['workDate'] ?? null,
             'description' => $data['description'] ?? null,
-            'rate' => isset($data['rate']) ? (float) $data['rate'] : null,
-            'total' => isset($data['total']) ? (float) $data['total'] : null,
+            'status' => $data['status'] ?? 'SAISI',
+            'validated_by' => $data['validated_by'] ?? $data['validatedBy'] ?? null,
+            'validated_at' => $data['validated_at'] ?? $data['validatedAt'] ?? null,
         ];
 
         return $this->insert('timesheets', $insertData);
@@ -99,24 +102,28 @@ class Timesheet extends BaseModel
             $updateData['mission_id'] = $data['mission_id'] ?? $data['missionId'];
         }
 
-        if (isset($data['hours'])) {
-            $updateData['hours'] = (float) $data['hours'];
+        if (isset($data['hours_worked']) || isset($data['hoursWorked'])) {
+            $updateData['hours_worked'] = $data['hours_worked'] ?? $data['hoursWorked'];
         }
 
-        if (isset($data['entry_date']) || isset($data['entryDate'])) {
-            $updateData['entry_date'] = $data['entry_date'] ?? $data['entryDate'];
+        if (isset($data['work_date']) || isset($data['workDate'])) {
+            $updateData['work_date'] = $data['work_date'] ?? $data['workDate'];
         }
 
         if (array_key_exists('description', $data)) {
             $updateData['description'] = $data['description'];
         }
 
-        if (isset($data['rate'])) {
-            $updateData['rate'] = (float) $data['rate'];
+        if (isset($data['status'])) {
+            $updateData['status'] = $data['status'];
         }
 
-        if (isset($data['total'])) {
-            $updateData['total'] = (float) $data['total'];
+        if (array_key_exists('validated_by', $data) || array_key_exists('validatedBy', $data)) {
+            $updateData['validated_by'] = $data['validated_by'] ?? $data['validatedBy'];
+        }
+
+        if (array_key_exists('validated_at', $data) || array_key_exists('validatedAt', $data)) {
+            $updateData['validated_at'] = $data['validated_at'] ?? $data['validatedAt'];
         }
 
         if (empty($updateData)) {
@@ -133,11 +140,11 @@ class Timesheet extends BaseModel
 
     public function findByMission(int $missionId): array
     {
-        return $this->fetchAll('SELECT * FROM `timesheets` WHERE `mission_id` = :mission_id ORDER BY `entry_date` DESC', ['mission_id' => $missionId]);
+        return $this->fetchAll('SELECT * FROM `timesheets` WHERE `mission_id` = :mission_id ORDER BY `work_date` DESC', ['mission_id' => $missionId]);
     }
 
     public function findByUser(int $userId): array
     {
-        return $this->fetchAll('SELECT * FROM `timesheets` WHERE `user_id` = :user_id ORDER BY `entry_date` DESC', ['user_id' => $userId]);
+        return $this->fetchAll('SELECT * FROM `timesheets` WHERE `user_id` = :user_id ORDER BY `work_date` DESC', ['user_id' => $userId]);
     }
 }

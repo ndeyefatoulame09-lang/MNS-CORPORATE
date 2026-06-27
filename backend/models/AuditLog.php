@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/BaseModel.php';
+
 /**
  * Modèle pour les journaux d'audit.
  */

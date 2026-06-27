@@ -143,16 +143,16 @@ class Client extends BaseModel
         $insertData = [
             'user_id' => isset($data['user_id']) ? $data['user_id'] : null,
             'company_name' => $data['company_name'] ?? $data['companyName'] ?? '',
-            'legal_form' => $data['legal_form'] ?? $data['legalForm'] ?? '',
-            'contact_name' => $data['contact_name'] ?? $data['contactName'] ?? '',
-            'email' => $data['email'] ?? '',
-            'phone' => $data['phone'] ?? '',
-            'address' => $data['address'] ?? '',
-            'ninea' => $data['ninea'] ?? '',
-            'rccm' => $data['rccm'] ?? '',
-            'tax_regime' => $data['tax_regime'] ?? $data['taxRegime'] ?? '',
-            'accounting_year_start' => $data['accounting_year_start'] ?? $data['accountingYearStart'] ?? null,
-            'accounting_year_end' => $data['accounting_year_end'] ?? $data['accountingYearEnd'] ?? null,
+            'legal_form' => $this->nullable($data['legal_form'] ?? $data['legalForm'] ?? null),
+            'contact_name' => $this->nullable($data['contact_name'] ?? $data['contactName'] ?? null),
+            'email' => $this->nullable($data['email'] ?? null),
+            'phone' => $this->nullable($data['phone'] ?? null),
+            'address' => $this->nullable($data['address'] ?? null),
+            'ninea' => $this->nullable($data['ninea'] ?? null),
+            'rccm' => $this->nullable($data['rccm'] ?? null),
+            'tax_regime' => $this->nullable($data['tax_regime'] ?? $data['taxRegime'] ?? null),
+            'accounting_year_start' => $this->nullable($data['accounting_year_start'] ?? $data['accountingYearStart'] ?? null),
+            'accounting_year_end' => $this->nullable($data['accounting_year_end'] ?? $data['accountingYearEnd'] ?? null),
             'status' => $data['status'] ?? 'ACTIF',
         ];
 
@@ -168,43 +168,43 @@ class Client extends BaseModel
         }
 
         if (isset($data['contact_name']) || isset($data['contactName'])) {
-            $updateData['contact_name'] = $data['contact_name'] ?? $data['contactName'];
+            $updateData['contact_name'] = $this->nullable($data['contact_name'] ?? $data['contactName']);
         }
 
         if (isset($data['email'])) {
-            $updateData['email'] = $data['email'];
+            $updateData['email'] = $this->nullable($data['email']);
         }
 
         if (isset($data['phone'])) {
-            $updateData['phone'] = $data['phone'];
+            $updateData['phone'] = $this->nullable($data['phone']);
         }
 
         if (isset($data['address'])) {
-            $updateData['address'] = $data['address'];
+            $updateData['address'] = $this->nullable($data['address']);
         }
 
         if (isset($data['legal_form'])) {
-            $updateData['legal_form'] = $data['legal_form'];
+            $updateData['legal_form'] = $this->nullable($data['legal_form']);
         }
 
         if (isset($data['ninea'])) {
-            $updateData['ninea'] = $data['ninea'];
+            $updateData['ninea'] = $this->nullable($data['ninea']);
         }
 
         if (isset($data['rccm'])) {
-            $updateData['rccm'] = $data['rccm'];
+            $updateData['rccm'] = $this->nullable($data['rccm']);
         }
 
         if (isset($data['tax_regime'])) {
-            $updateData['tax_regime'] = $data['tax_regime'];
+            $updateData['tax_regime'] = $this->nullable($data['tax_regime']);
         }
 
         if (isset($data['accounting_year_start']) || isset($data['accountingYearStart'])) {
-            $updateData['accounting_year_start'] = $data['accounting_year_start'] ?? $data['accountingYearStart'];
+            $updateData['accounting_year_start'] = $this->nullable($data['accounting_year_start'] ?? $data['accountingYearStart']);
         }
 
         if (isset($data['accounting_year_end']) || isset($data['accountingYearEnd'])) {
-            $updateData['accounting_year_end'] = $data['accounting_year_end'] ?? $data['accountingYearEnd'];
+            $updateData['accounting_year_end'] = $this->nullable($data['accounting_year_end'] ?? $data['accountingYearEnd']);
         }
 
         if (isset($data['status'])) {
@@ -221,6 +221,33 @@ class Client extends BaseModel
     public function delete(int $id): bool
     {
         return $this->deleteRecord('clients', $id);
+    }
+
+    public function setStatus(int $id, string $status): bool
+    {
+        return $this->updateRecord('clients', $id, ['status' => $status]);
+    }
+
+    public function countAll(array $filters = []): int
+    {
+        return $this->count($filters);
+    }
+
+    public function existsByNinea(string $ninea, int $excludeId = 0): bool
+    {
+        return $this->existsByUniqueField('ninea', $ninea, $excludeId);
+    }
+
+    public function existsByRccm(string $rccm, int $excludeId = 0): bool
+    {
+        return $this->existsByUniqueField('rccm', $rccm, $excludeId);
+    }
+
+    public function getTaxRegimes(): array
+    {
+        return $this->fetchAll(
+            'SELECT DISTINCT tax_regime FROM `clients` WHERE tax_regime IS NOT NULL AND tax_regime <> "" ORDER BY tax_regime ASC'
+        );
     }
 
     public function getMissions(int $clientId = null): array
@@ -264,7 +291,7 @@ class Client extends BaseModel
             return [];
         }
 
-        return $this->fetchAll('SELECT * FROM `fiscal_deadlines` WHERE `client_id` = :client_id ORDER BY `due_date` ASC', ['client_id' => $clientId]);
+        return $this->fetchAll('SELECT * FROM `fiscal_deadlines` WHERE `client_id` = :client_id ORDER BY `deadline_date` ASC', ['client_id' => $clientId]);
     }
 
     public function getEngagementLetters(int $clientId = null): array
@@ -276,5 +303,23 @@ class Client extends BaseModel
         }
 
         return $this->fetchAll('SELECT * FROM `engagement_letters` WHERE `client_id` = :client_id ORDER BY `id` ASC', ['client_id' => $clientId]);
+    }
+
+    private function existsByUniqueField(string $field, string $value, int $excludeId): bool
+    {
+        $sql = "SELECT id FROM `clients` WHERE `{$field}` = :value";
+        $params = ['value' => $value];
+
+        if ($excludeId > 0) {
+            $sql .= ' AND `id` <> :id';
+            $params['id'] = $excludeId;
+        }
+
+        return $this->fetchOne($sql, $params) !== null;
+    }
+
+    private function nullable(mixed $value): mixed
+    {
+        return $value === '' ? null : $value;
     }
 }

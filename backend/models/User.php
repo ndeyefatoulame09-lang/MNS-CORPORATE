@@ -201,7 +201,7 @@ class User extends BaseModel
             return [];
         }
 
-        return $this->fetchAll('SELECT * FROM `timesheets` WHERE `user_id` = :user_id ORDER BY `entry_date` DESC', ['user_id' => $this->id]);
+        return $this->fetchAll('SELECT * FROM `timesheets` WHERE `user_id` = :user_id ORDER BY `work_date` DESC', ['user_id' => $this->id]);
     }
 
     public function getNotifications(): array
