@@ -55,17 +55,46 @@ if ($role === 'EXPERT') {
     ];
 }
 ?>
+<style>
+    .mns-sidebar-logo {
+        width: 58px;
+        height: 58px;
+        border-radius: 18px;
+        background: #ffffff;
+        object-fit: contain;
+        padding: 8px;
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+    }
+
+    .mns-sidebar-brand {
+        display: flex;
+        align-items: center;
+        gap: 0.85rem;
+        padding: 0.35rem 0.25rem 1.1rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+    }
+
+    .mns-sidebar-link {
+        transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+    }
+
+    .mns-sidebar-link:hover {
+        background-color: rgba(255, 255, 255, 0.14);
+        color: #ffffff !important;
+        transform: translateX(2px);
+    }
+</style>
 <div class="d-lg-none position-fixed top-0 start-0 m-2" style="z-index: 1040;">
     <button class="btn text-white border-white" style="background-color: <?php echo e($sidebarBlue); ?>;" type="button" data-bs-toggle="offcanvas" data-bs-target="#mnsSidebar" aria-controls="mnsSidebar">
         Menu
     </button>
 </div>
 
-<nav class="border-end d-none d-lg-flex flex-column flex-shrink-0" style="min-height:100vh; width:260px; padding:1rem; background-color: <?php echo e($sidebarBlue); ?>;">
+<nav class="border-end d-none d-lg-flex flex-column flex-shrink-0" style="min-height:100vh; width:280px; padding:1rem; background: linear-gradient(180deg, <?php echo e($sidebarBlue); ?> 0%, #071d52 100%);">
     <?php renderSidebarContent($user, $fullName, $role, $links, $currentPath, $sidebarBlue); ?>
 </nav>
 
-<div class="offcanvas offcanvas-start d-lg-none text-white" style="background-color: <?php echo e($sidebarBlue); ?>;" tabindex="-1" id="mnsSidebar" aria-labelledby="mnsSidebarLabel">
+<div class="offcanvas offcanvas-start d-lg-none text-white" style="background: linear-gradient(180deg, <?php echo e($sidebarBlue); ?> 0%, #071d52 100%);" tabindex="-1" id="mnsSidebar" aria-labelledby="mnsSidebarLabel">
     <div class="offcanvas-header">
         <h5 class="offcanvas-title" id="mnsSidebarLabel">MNS CORPORATE</h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Fermer"></button>
@@ -80,10 +109,16 @@ function renderSidebarContent(?array $user, string $fullName, string $role, arra
 {
     ?>
     <div class="mb-4">
-        <a href="/MNS_CORPORATE/index.php" class="text-decoration-none text-white"><strong>MNS CORPORATE</strong></a>
+        <a href="/MNS_CORPORATE/index.php" class="mns-sidebar-brand text-decoration-none text-white">
+            <img class="mns-sidebar-logo" src="/MNS_CORPORATE/frontend/assets/images/logo.jpeg" alt="Logo MNS CORPORATE">
+            <span>
+                <strong class="d-block">MNS CORPORATE</strong>
+                <span class="small text-white-50">Gestion cabinet</span>
+            </span>
+        </a>
         <?php if ($user !== null): ?>
-            <div class="small text-white-50 mt-2">
-                <div><?php echo e($fullName); ?></div>
+            <div class="small text-white-50 mt-3 px-1">
+                <div class="text-white fw-semibold"><?php echo e($fullName); ?></div>
                 <div><?php echo e($role); ?></div>
             </div>
         <?php endif; ?>
@@ -95,15 +130,15 @@ function renderSidebarContent(?array $user, string $fullName, string $role, arra
                 <?php $isActive = sidebarLinkIsActive((string) $url, $currentPath); ?>
                 <li class="nav-item mb-2">
                     <a
-                        class="nav-link rounded <?php echo $isActive ? 'fw-semibold' : ''; ?>"
+                        class="nav-link rounded-3 mns-sidebar-link <?php echo $isActive ? 'fw-semibold' : ''; ?>"
                         style="<?php echo $isActive ? 'background-color:#fff;color:' . e($sidebarBlue) . ';' : 'color:#fff;'; ?>"
                         href="<?php echo e($url); ?>"
                     ><?php echo e($label); ?></a>
                 </li>
             <?php endforeach; ?>
         </ul>
-        <div class="pt-3 border-top border-light">
-            <a class="btn btn-outline-light w-100" href="/MNS_CORPORATE/logout.php">Deconnexion</a>
+        <div class="pt-3 border-top border-light border-opacity-25">
+            <a class="btn btn-outline-light w-100 rounded-pill" href="/MNS_CORPORATE/logout.php">Deconnexion</a>
         </div>
     <?php else: ?>
         <div class="text-white-50">Connectez-vous pour voir le menu.</div>
