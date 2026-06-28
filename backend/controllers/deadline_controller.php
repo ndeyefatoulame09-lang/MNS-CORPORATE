@@ -84,7 +84,7 @@ function storeDeadline(): void
     deadlinePostOnly();
     $pdo = getDatabaseConnection();
     $data = deadlineInput($_POST);
-    $errors = validateDeadline($data);
+    $errors = validateDeadline($data, true);
     if ($errors) {
         $_SESSION['old_input'] = $data;
         setFlashMessage('error', implode(' ', $errors));
@@ -149,12 +149,12 @@ function deadlineInput(array $input): array
     return $data;
 }
 
-function validateDeadline(array $data): array
+function validateDeadline(array $data, bool $isCreate = false): array
 {
     $errors = [];
     if ((int) $data['client_id'] <= 0) { $errors[] = 'Client obligatoire.'; }
     if ($data['title'] === '') { $errors[] = 'Titre obligatoire.'; }
-    if ($data['deadline_date'] === '') { $errors[] = 'Date echeance obligatoire.'; }
+    if ($data['deadline_date'] === '') { $errors[] = 'Date echeance obligatoire.'; } elseif ($isCreate && $data['deadline_date'] < date('Y-m-d')) { $errors[] = 'Une nouvelle echeance ne peut pas etre creee dans le passe.'; }
     if (!in_array($data['status'], FiscalDeadline::STATUSES, true)) { $errors[] = 'Statut invalide.'; }
     return $errors;
 }

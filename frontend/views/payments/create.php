@@ -1,2 +1,38 @@
-<?php declare(strict_types=1); if(!defined('MNS_CONTROLLER_RENDER')){require_once __DIR__.'/../../../backend/controllers/payment_controller.php'; if(($_GET['action']??'')==='store')storePayment(); else showPaymentCreate(); return;} require_once __DIR__.'/../../../backend/includes/helpers.php'; require_once __DIR__.'/../../../backend/includes/role_check.php'; requireRole(['EXPERT']); $flash=getFlashMessage(); require_once __DIR__.'/../includes/header.php'; ?>
-<div class="d-flex"><?php require_once __DIR__.'/../includes/sidebar.php'; ?><main class="container py-4"><?php if($flash): ?><div class="alert alert-danger"><?php echo e($flash['message']); ?></div><?php endif; ?><h1 class="h4">Nouveau paiement</h1><form method="post" action="/MNS_CORPORATE/frontend/views/payments/create.php?action=store"><div class="bg-white border rounded p-3"><div class="mb-3"><label class="form-label">Facture</label><select class="form-select" name="invoice_id" required><?php foreach($invoices as $i): ?><option value="<?php echo e((string)$i['id']); ?>" <?php echo (($_GET['invoice_id']??'')==$i['id'])?'selected':''; ?>><?php echo e($i['invoice_number']); ?></option><?php endforeach; ?></select></div><div class="mb-3"><label class="form-label">Date</label><input class="form-control" type="date" name="payment_date" required value="<?php echo e(date('Y-m-d')); ?>"></div><div class="mb-3"><label class="form-label">Montant</label><input class="form-control" type="number" step="0.01" min="0.01" name="amount" required></div><div class="mb-3"><label class="form-label">Moyen</label><select class="form-select" name="payment_method"><?php foreach(Payment::METHODS as $m): ?><option value="<?php echo e($m); ?>"><?php echo e($m); ?></option><?php endforeach; ?></select></div><div class="mb-3"><label class="form-label">Reference</label><input class="form-control" name="reference_number"></div><div class="mb-3"><label class="form-label">Notes</label><textarea class="form-control" name="notes"></textarea></div></div><div class="mt-3"><button class="btn btn-primary">Enregistrer</button></div></form></main></div><?php require_once __DIR__.'/../includes/footer.php'; ?>
+<?php declare(strict_types=1); if(!defined('MNS_CONTROLLER_RENDER')){require_once __DIR__.'/../../../backend/controllers/payment_controller.php'; if(($_GET['action']??'')==='store')storePayment(); else showPaymentCreate(); return;} require_once __DIR__.'/../../../backend/includes/helpers.php'; require_once __DIR__.'/../../../backend/includes/role_check.php'; requireRole(['EXPERT']); $flash=getFlashMessage(); $today=date('Y-m-d'); require_once __DIR__.'/../includes/header.php'; ?>
+<div class="d-flex">
+    <?php require_once __DIR__.'/../includes/sidebar.php'; ?>
+    <main class="container py-4">
+        <?php if($flash): ?><div class="alert alert-danger"><?php echo e($flash['message']); ?></div><?php endif; ?>
+        <h1 class="h4">Nouveau paiement</h1>
+        <form method="post" action="/MNS_CORPORATE/frontend/views/payments/create.php?action=store">
+            <div class="bg-white border rounded p-3">
+                <div class="mb-3">
+                    <label class="form-label">Facture *</label>
+                    <select class="form-select" name="invoice_id" required>
+                        <option value="">Selectionner</option>
+                        <?php foreach($invoices as $i): ?><option value="<?php echo e((string)$i['id']); ?>" <?php echo (($_GET['invoice_id']??'')==$i['id'])?'selected':''; ?>><?php echo e($i['invoice_number']); ?></option><?php endforeach; ?>
+                    </select>
+                    <div class="invalid-feedback">Selectionnez une facture non annulee.</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Date *</label>
+                    <input class="form-control" type="date" name="payment_date" required max="<?php echo e($today); ?>" data-max-today="true" value="<?php echo e($today); ?>">
+                    <div class="form-text">Un paiement ne peut pas etre date dans le futur.</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Montant *</label>
+                    <input class="form-control" type="number" step="0.01" min="0.01" name="amount" required>
+                    <div class="invalid-feedback">Le montant doit etre superieur a zero et ne pas depasser le solde.</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Moyen</label>
+                    <select class="form-select" name="payment_method"><?php foreach(Payment::METHODS as $m): ?><option value="<?php echo e($m); ?>"><?php echo e($m); ?></option><?php endforeach; ?></select>
+                </div>
+                <div class="mb-3"><label class="form-label">Reference</label><input class="form-control" name="reference_number" maxlength="100"></div>
+                <div class="mb-3"><label class="form-label">Notes</label><textarea class="form-control" name="notes"></textarea></div>
+            </div>
+            <div class="mt-3"><button class="btn btn-primary">Enregistrer</button></div>
+        </form>
+    </main>
+</div>
+<?php require_once __DIR__.'/../includes/footer.php'; ?>

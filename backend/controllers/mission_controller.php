@@ -72,7 +72,7 @@ function listMissions(): void
         $client = missionClientForUser(getDatabaseConnection(), (int) $user['id']);
         $filters['visible_client_id'] = $client['id'] ?? 0;
     } elseif (($user['role'] ?? '') !== 'EXPERT') {
-        setFlashMessage('error', 'Vous n’avez pas les droits pour accéder à cette page.');
+        setFlashMessage('error', 'Vous nÃ¢â‚¬â„¢avez pas les droits pour accÃƒÂ©der ÃƒÂ  cette page.');
         redirect('/MNS_CORPORATE/index.php');
     }
     $page = max(1, (int) ($_GET['page'] ?? 1));
@@ -331,6 +331,8 @@ function validateMissionData(Mission $model, array $data, bool $activeOnly): arr
 
     if ($data['start_date'] === '') {
         $errors[] = 'La date de debut est obligatoire.';
+    } elseif ($activeOnly && $data['start_date'] < date('Y-m-d')) {
+        $errors[] = 'Une nouvelle mission doit commencer aujourd hui ou a une date future.';
     }
 
     if ($data['planned_end_date'] !== '' && $data['start_date'] !== '' && $data['planned_end_date'] < $data['start_date']) {
@@ -341,7 +343,11 @@ function validateMissionData(Mission $model, array $data, bool $activeOnly): arr
         $errors[] = 'La date de fin reelle ne peut pas etre avant la date de debut.';
     }
 
-    if ($data['estimated_hours'] !== '' && (!is_numeric($data['estimated_hours']) || (float) $data['estimated_hours'] < 0)) {
+    if ($data['actual_end_date'] !== '' && $data['status'] !== 'TERMINEE') {
+        $errors[] = 'La date de fin reelle est reservee aux missions terminees.';
+    }
+
+    if ($data['estimated_hours'] !== '' && (!is_numeric($data['estimated_hours']) || (float) $data['estimated_hours'] <= 0)) {
         $errors[] = 'Le temps estime doit etre un nombre positif.';
     }
 

@@ -126,8 +126,8 @@ function validateTimesheetInput(Timesheet $model, array $data): array
 {
     $errors = [];
     if ((int) $data['mission_id'] <= 0 || !$model->isUserAssignedToMission((int) $data['user_id'], (int) $data['mission_id'])) { $errors[] = 'Mission invalide.'; }
-    if ($data['work_date'] === '') { $errors[] = 'Date obligatoire.'; }
-    if ($data['description'] === '') { $errors[] = 'Description obligatoire.'; }
+    if ($data['work_date'] === '') { $errors[] = 'Date obligatoire.'; } elseif ($data['work_date'] > date('Y-m-d')) { $errors[] = 'La date de travail ne peut pas etre dans le futur.'; }
+    if ($data['description'] === '') { $errors[] = 'Description obligatoire.'; } elseif (mb_strlen($data['description']) < 5) { $errors[] = 'La description doit etre plus precise.'; }
     if (!is_numeric($data['hours_worked']) || (float) $data['hours_worked'] <= 0 || (float) $data['hours_worked'] > 24) { $errors[] = 'Les heures doivent etre entre 0 et 24.'; }
     if ($data['work_date'] !== '' && is_numeric($data['hours_worked']) && $model->getTotalHoursByUserAndDate((int) $data['user_id'], $data['work_date']) + (float) $data['hours_worked'] > 24) { $errors[] = 'Le total journalier depasse 24 heures.'; }
     return $errors;

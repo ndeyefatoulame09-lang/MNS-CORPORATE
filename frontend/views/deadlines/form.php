@@ -8,6 +8,8 @@ if (!is_array($oldInput)) {
     $oldInput = [];
 }
 unset($_SESSION['old_input']);
+$today = date('Y-m-d');
+$isCreate = empty($deadline['id']);
 
 function deadlineValue(string $key, ?array $deadline, string $default = ''): string
 {
@@ -37,6 +39,7 @@ function deadlineValue(string $key, ?array $deadline, string $default = ''): str
                     </option>
                 <?php endforeach; ?>
             </select>
+            <div class="invalid-feedback">Le client est obligatoire.</div>
         </div>
 
         <div class="col-md-6 mb-3">
@@ -54,17 +57,20 @@ function deadlineValue(string $key, ?array $deadline, string $default = ''): str
         <div class="col-md-8 mb-3">
             <label class="form-label">Titre *</label>
             <input class="form-control" name="title" required maxlength="180" value="<?php echo deadlineValue('title', $deadline ?? null); ?>">
+            <div class="invalid-feedback">Le titre est obligatoire.</div>
         </div>
 
         <div class="col-md-4 mb-3">
             <label class="form-label">Date d'echeance *</label>
-            <input class="form-control" type="date" name="deadline_date" required value="<?php echo deadlineValue('deadline_date', $deadline ?? null); ?>">
+            <input class="form-control" type="date" name="deadline_date" required <?php echo $isCreate ? 'min="' . e($today) . '" data-min-today="true"' : ''; ?> value="<?php echo deadlineValue('deadline_date', $deadline ?? null); ?>">
+            <div class="form-text"><?php echo $isCreate ? 'Une nouvelle echeance ne peut pas etre creee dans le passe.' : 'Conservez une date coherente avec le suivi fiscal.'; ?></div>
+            <div class="invalid-feedback">Choisissez une date d echeance valide.</div>
         </div>
 
         <div class="col-md-4 mb-3">
             <label class="form-label">Statut</label>
             <?php $currentStatus = deadlineValue('status', $deadline ?? null, 'A_VENIR'); ?>
-            <select class="form-select" name="status">
+            <select class="form-select" name="status" required>
                 <?php foreach (FiscalDeadline::STATUSES as $status): ?>
                     <option value="<?php echo e($status); ?>" <?php echo $currentStatus === $status ? 'selected' : ''; ?>>
                         <?php echo e($status); ?>
