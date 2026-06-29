@@ -150,6 +150,10 @@ CREATE TABLE IF NOT EXISTS documents (
         NOT NULL DEFAULT 'AUTRE',
     status ENUM('NOUVEAU', 'CONSULTE', 'VALIDE', 'REJETE')
         NOT NULL DEFAULT 'NOUVEAU',
+    is_archived TINYINT(1) NOT NULL DEFAULT 0,
+    archived_at DATETIME NULL,
+    archived_by INT UNSIGNED NULL,
+    archive_reason TEXT NULL,
     uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_documents_client
         FOREIGN KEY (client_id) REFERENCES clients(id)
@@ -162,6 +166,10 @@ CREATE TABLE IF NOT EXISTS documents (
     CONSTRAINT fk_documents_uploaded_by
         FOREIGN KEY (uploaded_by) REFERENCES users(id)
         ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+    CONSTRAINT fk_documents_archived_by
+        FOREIGN KEY (archived_by) REFERENCES users(id)
+        ON DELETE SET NULL
         ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
@@ -375,6 +383,7 @@ CREATE INDEX idx_users_role ON users(role);
 CREATE INDEX idx_clients_company_name ON clients(company_name);
 CREATE INDEX idx_missions_client_status ON missions(client_id, status);
 CREATE INDEX idx_documents_client ON documents(client_id);
+CREATE INDEX idx_documents_archived ON documents(is_archived);
 CREATE INDEX idx_deadlines_date_status ON fiscal_deadlines(deadline_date, status);
 CREATE INDEX idx_invoices_client_status ON invoices(client_id, status);
 CREATE INDEX idx_payments_invoice ON payments(invoice_id);

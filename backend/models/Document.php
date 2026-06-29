@@ -79,6 +79,46 @@ class Document extends BaseModel
         return $this->updateRecord('documents', $id, ['status' => $status]);
     }
 
+    public function updateMetadata(int $id, array $data): bool
+    {
+        return $this->updateRecord('documents', $id, [
+            'title' => $data['title'] ?? '',
+            'mission_id' => ($data['mission_id'] ?? '') === '' ? null : (int) $data['mission_id'],
+            'document_category' => $data['document_category'] ?? 'AUTRE',
+        ]);
+    }
+
+    public function replaceFile(int $id, array $fileData): bool
+    {
+        return $this->updateRecord('documents', $id, [
+            'original_filename' => $fileData['original_filename'] ?? '',
+            'stored_filename' => $fileData['stored_filename'] ?? '',
+            'file_path' => $fileData['file_path'] ?? '',
+            'file_type' => $fileData['file_type'] ?? null,
+            'file_size' => $fileData['file_size'] ?? null,
+        ]);
+    }
+
+    public function archive(int $id, int $userId, string $reason): bool
+    {
+        return $this->updateRecord('documents', $id, [
+            'is_archived' => 1,
+            'archived_at' => date('Y-m-d H:i:s'),
+            'archived_by' => $userId,
+            'archive_reason' => $reason,
+        ]);
+    }
+
+    public function restore(int $id): bool
+    {
+        return $this->updateRecord('documents', $id, [
+            'is_archived' => 0,
+            'archived_at' => null,
+            'archived_by' => null,
+            'archive_reason' => null,
+        ]);
+    }
+
     public function findByClient(int $clientId): array
     {
         return $this->findAll(['client_id' => $clientId], 100, 0);
@@ -99,9 +139,12 @@ class Document extends BaseModel
         return $this->countAll($this->applyAccessFilters($user, $filters));
     }
 
-    public function canAccess(array $user, int $documentId): bool
+    public function canAccess(array $user, int $documentId, bool $includeArchived = false): bool
     {
         $filters = $this->applyAccessFilters($user, ['document_id' => $documentId]);
+        if ($includeArchived) {
+            $filters['show_archived'] = '1';
+        }
         return $this->countAll($filters) > 0;
     }
 
@@ -119,6 +162,12 @@ class Document extends BaseModel
     private function where(array $filters, array &$params): string
     {
         $where = [];
+        if (($filters['show_archived'] ?? '') !== '1') {
+            $where[] = 'd.is_archived = 0';
+        } elseif (array_key_exists('is_archived', $filters)) {
+            $where[] = 'd.is_archived = :is_archived';
+            $params['is_archived'] = $filters['is_archived'];
+        }
         if (($filters['q'] ?? '') !== '') {
             $where[] = '(d.title LIKE :q OR d.original_filename LIKE :q)';
             $params['q'] = '%' . $filters['q'] . '%';

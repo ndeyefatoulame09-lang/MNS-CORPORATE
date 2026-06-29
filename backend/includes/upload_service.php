@@ -46,3 +46,31 @@ function handleSecureDocumentUpload(array $file): array
         'file_size' => (int) $file['size'],
     ];
 }
+
+function archiveExistingDocumentFile(array $document): ?string
+{
+    $relativePath = (string) ($document['file_path'] ?? '');
+    if ($relativePath === '' || str_contains($relativePath, '..')) {
+        return null;
+    }
+
+    $source = realpath(__DIR__ . '/../../' . $relativePath);
+    $uploadRoot = realpath(__DIR__ . '/../../frontend/assets/uploads/documents');
+    if ($source === false || $uploadRoot === false || !str_starts_with($source, $uploadRoot) || !is_file($source)) {
+        return null;
+    }
+
+    $archiveDir = $uploadRoot . DIRECTORY_SEPARATOR . 'archive';
+    if (!is_dir($archiveDir) && !mkdir($archiveDir, 0755, true)) {
+        throw new RuntimeException('Dossier archive indisponible.');
+    }
+
+    $storedName = basename((string) ($document['stored_filename'] ?? basename($source)));
+    $archivedName = date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '_' . $storedName;
+    $target = $archiveDir . DIRECTORY_SEPARATOR . $archivedName;
+    if (!rename($source, $target)) {
+        throw new RuntimeException('Archivage de l ancien fichier impossible.');
+    }
+
+    return 'frontend/assets/uploads/documents/archive/' . $archivedName;
+}

@@ -23,6 +23,11 @@ function handleDocumentRequest(): void
     elseif ($action === 'download') { downloadDocument((int) ($_GET['id'] ?? 0)); }
     elseif ($action === 'status') { changeDocumentStatus((int) ($_POST['id'] ?? 0)); }
     elseif ($action === 'comment') { addDocumentComment((int) ($_POST['document_id'] ?? 0)); }
+    elseif ($action === 'edit') { showDocumentEdit((int) ($_GET['id'] ?? 0)); }
+    elseif ($action === 'update') { updateDocumentMetadata((int) ($_POST['id'] ?? 0)); }
+    elseif ($action === 'replace') { replaceDocumentFile((int) ($_POST['id'] ?? 0)); }
+    elseif ($action === 'archive') { archiveDocument((int) ($_POST['id'] ?? 0)); }
+    elseif ($action === 'restore') { restoreDocument((int) ($_POST['id'] ?? 0)); }
     elseif ($action === 'upload') { showDocumentUpload(); }
     elseif ($action === 'show') { showDocument((int) ($_GET['id'] ?? 0)); }
     else { listDocuments(); }
@@ -32,9 +37,11 @@ function listDocuments(): void
 {
     $model = new Document(getDatabaseConnection());
     $filters = documentFilters();
+    if (($user = currentUser()) && ($user['role'] ?? '') !== 'EXPERT') {
+        unset($filters['show_archived']);
+    }
     $page = max(1, (int) ($_GET['page'] ?? 1));
     $perPage = 20;
-    $user = currentUser();
     $documents = $model->findAccessibleByUser($user, $filters, $perPage, ($page - 1) * $perPage);
     $total = $model->countAccessibleByUser($user, $filters);
     renderDocumentView('list.php', compact('documents', 'total', 'filters', 'page', 'perPage'));
@@ -82,10 +89,11 @@ function showDocument(int $id): void
     $pdo = getDatabaseConnection();
     $model = new Document($pdo);
     $user = currentUser();
-    if (!$model->canAccess($user, $id)) { setFlashMessage('error', 'Document inaccessible.'); redirect(DOCUMENT_LIST_URL); }
+    $includeArchived = ($user['role'] ?? '') === 'EXPERT';
+    if (!$model->canAccess($user, $id, $includeArchived)) { setFlashMessage('error', 'Document inaccessible.'); redirect(DOCUMENT_LIST_URL); }
     $document = $model->getDocumentWithRelations($id);
     if ($document === null) { redirect(DOCUMENT_LIST_URL); }
-    if ($document['status'] === 'NOUVEAU') { $model->updateStatus($id, 'CONSULTE'); }
+    if ((int) ($document['is_archived'] ?? 0) === 0 && $document['status'] === 'NOUVEAU') { $model->updateStatus($id, 'CONSULTE'); $document['status'] = 'CONSULTE'; }
     $comments = (new Comment($pdo))->findByDocument($id);
     documentAudit($pdo, 'CONSULTATION_DOCUMENT', 'Consultation document #' . $id);
     renderDocumentView('show.php', compact('document', 'comments'));
@@ -96,7 +104,8 @@ function downloadDocument(int $id): void
     $pdo = getDatabaseConnection();
     $model = new Document($pdo);
     $user = currentUser();
-    if (!$model->canAccess($user, $id)) { setFlashMessage('error', 'Document inaccessible.'); redirect('/MNS_CORPORATE/index.php'); }
+    $includeArchived = ($user['role'] ?? '') === 'EXPERT';
+    if (!$model->canAccess($user, $id, $includeArchived)) { setFlashMessage('error', 'Document inaccessible.'); redirect('/MNS_CORPORATE/index.php'); }
     $document = $model->getDocumentWithRelations($id);
     if ($document === null) { http_response_code(404); exit('Introuvable'); }
     $path = __DIR__ . '/../../' . $document['file_path'];
@@ -116,9 +125,134 @@ function changeDocumentStatus(int $id): void
     $status = trim((string) ($_POST['status'] ?? ''));
     if (!in_array($status, ['VALIDE', 'REJETE'], true)) { setFlashMessage('error', 'Statut invalide.'); redirect(DOCUMENT_LIST_URL); }
     $pdo = getDatabaseConnection();
-    (new Document($pdo))->updateStatus($id, $status);
+    $model = new Document($pdo);
+    $document = documentAccessibleOrRedirect($model, currentUser(), $id);
+    if ((int) ($document['is_archived'] ?? 0) === 1) {
+        setFlashMessage('error', 'Impossible de changer le statut d un document archive.');
+        redirect('/MNS_CORPORATE/frontend/views/documents/show.php?id=' . $id);
+    }
+    $model->updateStatus($id, $status);
     documentAudit($pdo, $status === 'VALIDE' ? 'VALIDATION_DOCUMENT' : 'REJET_DOCUMENT', 'Statut document #' . $id . ' : ' . $status);
     setFlashMessage('success', 'Document mis a jour.');
+    redirect('/MNS_CORPORATE/frontend/views/documents/show.php?id=' . $id);
+}
+
+function showDocumentEdit(int $id): void
+{
+    requireAuth();
+    $pdo = getDatabaseConnection();
+    $model = new Document($pdo);
+    $document = documentAccessibleOrRedirect($model, currentUser(), $id);
+    if (!documentCanEditMetadata(currentUser(), $document)) {
+        setFlashMessage('error', 'Modification non autorisee.');
+        redirect('/MNS_CORPORATE/frontend/views/documents/show.php?id=' . $id);
+    }
+    $clients = documentSelectableClients($pdo, currentUser());
+    $missions = documentSelectableMissions($pdo, currentUser());
+    $mode = 'edit';
+    renderDocumentView('upload.php', compact('clients', 'missions', 'document', 'mode'));
+}
+
+function updateDocumentMetadata(int $id): void
+{
+    requireAuth();
+    documentPostOnly();
+    $pdo = getDatabaseConnection();
+    $model = new Document($pdo);
+    $document = documentAccessibleOrRedirect($model, currentUser(), $id);
+    if (!documentCanEditMetadata(currentUser(), $document)) {
+        setFlashMessage('error', 'Modification non autorisee.');
+        redirect('/MNS_CORPORATE/frontend/views/documents/show.php?id=' . $id);
+    }
+    $data = documentMetadataInput($_POST);
+    $data['client_id'] = (int) $document['client_id'];
+    if (!documentCanUploadForSelection($pdo, currentUser(), (int) $document['client_id'], $data['mission_id'] === '' ? null : (int) $data['mission_id'])) {
+        setFlashMessage('error', 'Mission non autorisee pour ce document.');
+        redirect('/MNS_CORPORATE/frontend/views/documents/list.php?action=edit&id=' . $id);
+    }
+    $errors = validateDocument($data);
+    if ($errors) {
+        setFlashMessage('error', implode(' ', $errors));
+        redirect('/MNS_CORPORATE/frontend/views/documents/list.php?action=edit&id=' . $id);
+    }
+    $model->updateMetadata($id, $data);
+    documentAudit($pdo, 'MODIFICATION_DOCUMENT', 'Modification metadonnees document #' . $id);
+    setFlashMessage('success', 'Document modifie.');
+    redirect('/MNS_CORPORATE/frontend/views/documents/show.php?id=' . $id);
+}
+
+function replaceDocumentFile(int $id): void
+{
+    requireAuth();
+    documentPostOnly();
+    $pdo = getDatabaseConnection();
+    $model = new Document($pdo);
+    $document = documentAccessibleOrRedirect($model, currentUser(), $id);
+    if (!documentCanReplaceFile(currentUser(), $document)) {
+        setFlashMessage('error', 'Remplacement non autorise.');
+        redirect('/MNS_CORPORATE/frontend/views/documents/show.php?id=' . $id);
+    }
+    try {
+        $fileData = handleSecureDocumentUpload($_FILES['document_file'] ?? []);
+        $oldArchivedPath = archiveExistingDocumentFile($document);
+        $model->replaceFile($id, $fileData);
+        $auditDetails = 'Remplacement fichier document #' . $id;
+        if ($oldArchivedPath !== null) {
+            $auditDetails .= ' ancien fichier archive: ' . $oldArchivedPath;
+        }
+        documentAudit($pdo, 'REMPLACEMENT_DOCUMENT', $auditDetails);
+        setFlashMessage('success', 'Fichier remplace.');
+    } catch (Throwable $e) {
+        setFlashMessage('error', $e->getMessage());
+    }
+    redirect('/MNS_CORPORATE/frontend/views/documents/show.php?id=' . $id);
+}
+
+function archiveDocument(int $id): void
+{
+    requireAuth();
+    documentPostOnly();
+    $pdo = getDatabaseConnection();
+    $model = new Document($pdo);
+    $document = documentAccessibleOrRedirect($model, currentUser(), $id);
+    $user = currentUser();
+    $reason = trim((string) ($_POST['archive_reason'] ?? ''));
+    if (($user['role'] ?? '') === 'EXPERT') {
+        if ($reason === '') {
+            setFlashMessage('error', 'Motif d archivage obligatoire.');
+            redirect('/MNS_CORPORATE/frontend/views/documents/show.php?id=' . $id);
+        }
+        if (!documentCanExpertArchive($document)) {
+            setFlashMessage('error', 'Archivage non autorise.');
+            redirect('/MNS_CORPORATE/frontend/views/documents/show.php?id=' . $id);
+        }
+        $model->archive($id, currentUserId(), $reason);
+        documentAudit($pdo, 'ARCHIVAGE_DOCUMENT', 'Archivage document #' . $id . ' motif: ' . $reason);
+        setFlashMessage('success', 'Document archive.');
+    } elseif (documentCanClientDelete(currentUser(), $document)) {
+        $model->archive($id, currentUserId(), 'Suppression logique demandee par le client');
+        documentAudit($pdo, 'SUPPRESSION_LOGIQUE_DOCUMENT', 'Suppression logique document #' . $id);
+        setFlashMessage('success', 'Document supprime logiquement.');
+    } else {
+        setFlashMessage('error', 'Suppression non autorisee.');
+    }
+    redirect(DOCUMENT_LIST_URL);
+}
+
+function restoreDocument(int $id): void
+{
+    requireRole(['EXPERT']);
+    documentPostOnly();
+    $pdo = getDatabaseConnection();
+    $model = new Document($pdo);
+    $document = documentAccessibleOrRedirect($model, currentUser(), $id);
+    if ((int) ($document['is_archived'] ?? 0) !== 1) {
+        setFlashMessage('error', 'Document non archive.');
+        redirect('/MNS_CORPORATE/frontend/views/documents/show.php?id=' . $id);
+    }
+    $model->restore($id);
+    documentAudit($pdo, 'RESTAURATION_DOCUMENT', 'Restauration document #' . $id);
+    setFlashMessage('success', 'Document restaure.');
     redirect('/MNS_CORPORATE/frontend/views/documents/show.php?id=' . $id);
 }
 
@@ -146,8 +280,9 @@ function documentInput(array $input): array
     $data['document_category'] = $data['document_category'] === '' ? 'AUTRE' : $data['document_category'];
     return $data;
 }
+function documentMetadataInput(array $input): array { foreach (['mission_id','title','document_category'] as $field) { $data[$field] = trim((string) ($input[$field] ?? '')); } $data['document_category'] = $data['document_category'] === '' ? 'AUTRE' : $data['document_category']; return $data; }
 function validateDocument(array $data): array { $e=[]; if((int)$data['client_id']<=0){$e[]='Client obligatoire.';} if($data['title']===''){$e[]='Titre obligatoire.';} if(!in_array($data['document_category'], Document::CATEGORIES, true)){$e[]='Categorie invalide.';} return $e; }
-function documentFilters(): array { $f=[]; foreach(['q','client_id','mission_id','status','document_category'] as $k){$v=trim((string)($_GET[$k]??'')); if($v!==''){$f[$k]=$v;}} return $f; }
+function documentFilters(): array { $f=[]; foreach(['q','client_id','mission_id','status','document_category','show_archived'] as $k){$v=trim((string)($_GET[$k]??'')); if($v!==''){$f[$k]=$v;}} return $f; }
 function documentPostOnly(): void { if(!isPostRequest()){setFlashMessage('error','Action POST requise.'); redirect(DOCUMENT_LIST_URL);} }
 function documentSelectableClients(PDO $pdo, array $user): array
 {
@@ -203,6 +338,53 @@ function documentCanUploadForSelection(PDO $pdo, array $user, int $clientId, ?in
         }
     }
     return false;
+}
+
+function documentAccessibleOrRedirect(Document $model, array $user, int $id): array
+{
+    $includeArchived = ($user['role'] ?? '') === 'EXPERT';
+    if (!$model->canAccess($user, $id, $includeArchived)) {
+        setFlashMessage('error', 'Document inaccessible.');
+        redirect(DOCUMENT_LIST_URL);
+    }
+    $document = $model->getDocumentWithRelations($id);
+    if ($document === null) {
+        setFlashMessage('error', 'Document introuvable.');
+        redirect(DOCUMENT_LIST_URL);
+    }
+    return $document;
+}
+
+function documentCanEditMetadata(array $user, array $document): bool
+{
+    if (($user['role'] ?? '') === 'EXPERT') {
+        return true;
+    }
+    return ($user['role'] ?? '') === 'CLIENT'
+        && (int) ($document['is_archived'] ?? 0) === 0
+        && ($document['status'] ?? '') !== 'VALIDE';
+}
+
+function documentCanReplaceFile(array $user, array $document): bool
+{
+    if (($user['role'] ?? '') === 'EXPERT') {
+        return true;
+    }
+    return ($user['role'] ?? '') === 'CLIENT'
+        && (int) ($document['is_archived'] ?? 0) === 0
+        && in_array(($document['status'] ?? ''), ['NOUVEAU', 'CONSULTE', 'REJETE'], true);
+}
+
+function documentCanClientDelete(array $user, array $document): bool
+{
+    return ($user['role'] ?? '') === 'CLIENT'
+        && (int) ($document['is_archived'] ?? 0) === 0
+        && ($document['status'] ?? '') === 'NOUVEAU';
+}
+
+function documentCanExpertArchive(array $document): bool
+{
+    return (int) ($document['is_archived'] ?? 0) === 0;
 }
 
 function notifyDocumentUploadRecipients(PDO $pdo, array $actor, int $clientId, ?int $missionId, string $title, int $documentId): void
